@@ -1,0 +1,145 @@
+create_object:
+  name: Create object
+  description: Create a new tracked Stuck object.
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        text:
+    name:
+      required: true
+      selector:
+        text:
+    tag_id:
+      required: true
+      selector:
+        text:
+    interval_value:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    interval_unit:
+      required: true
+      selector:
+        select:
+          options:
+            - day
+            - week
+            - month
+    notes:
+      selector:
+        text:
+          multiline: true
+    icon:
+      selector:
+        icon:
+    category:
+      selector:
+        text:
+    due_soon_threshold_days:
+      selector:
+        number:
+          min: 1
+          mode: box
+    active:
+      selector:
+        boolean:
+    last_reset_at:
+      selector:
+        text:
+
+update_object:
+  name: Update object
+  description: Update an existing tracked Stuck object.
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        text:
+    object_id:
+      required: true
+      selector:
+        text:
+    name:
+      selector:
+        text:
+    tag_id:
+      selector:
+        text:
+    interval_value:
+      selector:
+        number:
+          min: 1
+          mode: box
+    interval_unit:
+      selector:
+        select:
+          options:
+            - day
+            - week
+            - month
+    notes:
+      selector:
+        text:
+          multiline: true
+    icon:
+      selector:
+        icon:
+    category:
+      selector:
+        text:
+    due_soon_threshold_days:
+      selector:
+        number:
+          min: 1
+          mode: box
+    active:
+      selector:
+        boolean:
+    last_reset_at:
+      selector:
+        text:
+
+delete_object:
+  name: Delete object
+  description: Delete a tracked Stuck object.
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        text:
+    object_id:
+      required: true
+      selector:
+        text:
+
+reset_object:
+  name: Reset object
+  description: Reset the timer for a tracked Stuck object.
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        text:
+    object_id:
+      required: true
+      selector:
+        text:
+    reset_at:
+      selector:
+        text:
+
+dismiss_pending_tag:
+  name: Dismiss pending tag
+  description: Remove a pending unassigned tag.
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        text:
+    tag_id:
+      required: true
+      selector:
+        text:
