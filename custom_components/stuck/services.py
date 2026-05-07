@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
 import voluptuous as vol
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 
@@ -25,6 +27,17 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+async def _async_reload_entry(hass: HomeAssistant, config_entry_id: str) -> None:
+    """Reload a config entry after structure-changing operations."""
+    entry = hass.config_entries.async_get_entry(config_entry_id)
+    if entry is None:
+        return
+    if entry.state not in {ConfigEntryState.LOADED, ConfigEntryState.SETUP_RETRY}:
+        return
+    await asyncio.sleep(0)
+    await hass.config_entries.async_reload(config_entry_id)
 
 SERVICE_CREATE_OBJECT_SCHEMA = vol.Schema(
     {
@@ -95,7 +108,8 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
     async def handle_create_object(call: ServiceCall) -> None:
         """Handle object creation."""
-        coordinator = await _get_coordinator(call.data["config_entry_id"])
+        config_entry_id = call.data["config_entry_id"]
+        coordinator = await _get_coordinator(config_entry_id)
         await coordinator.async_create_object(
             name=call.data["name"],
             tag_id=call.data[ATTR_TAG_ID],
@@ -108,6 +122,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
             active=call.data.get("active", True),
             last_reset_at=call.data.get("last_reset_at"),
         )
+        await _async_reload_entry(hass, config_entry_id)
 
     async def handle_update_object(call: ServiceCall) -> None:
         """Handle object updates."""
@@ -121,8 +136,10 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
     async def handle_delete_object(call: ServiceCall) -> None:
         """Handle object deletion."""
-        coordinator = await _get_coordinator(call.data["config_entry_id"])
+        config_entry_id = call.data["config_entry_id"]
+        coordinator = await _get_coordinator(config_entry_id)
         await coordinator.async_delete_object(call.data[ATTR_OBJECT_ID])
+        await _async_reload_entry(hass, config_entry_id)
 
     async def handle_reset_object(call: ServiceCall) -> None:
         """Handle timer reset."""
