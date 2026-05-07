@@ -124,7 +124,9 @@ reset_object:
       selector:
         text:
     object_id:
-      required: true
+      selector:
+        text:
+    tag_id:
       selector:
         text:
     reset_at:

@@ -82,7 +82,8 @@ SERVICE_DELETE_OBJECT_SCHEMA = vol.Schema(
 SERVICE_RESET_OBJECT_SCHEMA = vol.Schema(
     {
         vol.Required("config_entry_id"): cv.string,
-        vol.Required(ATTR_OBJECT_ID): cv.string,
+        vol.Exclusive(ATTR_OBJECT_ID, "target"): cv.string,
+        vol.Exclusive(ATTR_TAG_ID, "target"): cv.string,
         vol.Optional("reset_at"): vol.Any(None, cv.string),
     }
 )
@@ -144,8 +145,19 @@ async def async_register_services(hass: HomeAssistant) -> None:
     async def handle_reset_object(call: ServiceCall) -> None:
         """Handle timer reset."""
         coordinator = await _get_coordinator(call.data["config_entry_id"])
+
+        object_id = call.data.get(ATTR_OBJECT_ID)
+        if object_id is None:
+            tag_id = call.data.get(ATTR_TAG_ID)
+            if tag_id is None:
+                raise ValueError("Either object_id or tag_id is required")
+            obj = coordinator.get_object_by_tag(tag_id)
+            if obj is None:
+                raise ValueError(f"Unknown tag_id: {tag_id}")
+            object_id = obj.id
+
         await coordinator.async_reset_object(
-            call.data[ATTR_OBJECT_ID], reset_at=call.data.get("reset_at")
+            object_id, reset_at=call.data.get("reset_at")
         )
 
     async def handle_dismiss_pending_tag(call: ServiceCall) -> None:
