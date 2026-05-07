@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from calendar import monthrange
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -27,13 +28,15 @@ from .const import (
 from .models import IntegrationSettings, PendingTag, TrackedObject, utc_now_iso
 from .storage import StuckStorage
 
+_LOGGER = logging.getLogger(__name__)
+
 
 class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinate in-memory state for the Stuck integration."""
 
     def __init__(self, hass: HomeAssistant, storage: StuckStorage) -> None:
         """Initialize the coordinator."""
-        super().__init__(hass, logger=None, name=DOMAIN)
+        super().__init__(hass, logger=_LOGGER, name=DOMAIN)
         self.storage = storage
         self.objects: dict[str, TrackedObject] = {}
         self.pending_tags: dict[str, PendingTag] = {}
