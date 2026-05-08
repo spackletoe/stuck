@@ -245,3 +245,36 @@ claim_latest_pending_tag:
     last_reset_at:
       selector:
         text:
+
+claim_latest_pending_tag_from_helpers:
+  name: Claim latest pending tag from helpers
+  description: Convert the most recently seen pending tag into a tracked object using the Stuck onboarding helper values.
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        text:
+    notes:
+      selector:
+        text:
+          multiline: true
+    icon:
+      selector:
+        icon:
+    category:
+      selector:
+        text:
+    due_soon_threshold_days:
+      selector:
+        number:
+          min: 1
+          mode: box
+    active:
+      selector:
+        boolean:
+    last_reset_at:
+      selector:
+        text:
+    clear_name_helper:
+      selector:
+        boolean:

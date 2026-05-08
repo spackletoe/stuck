@@ -19,6 +19,7 @@ from .const import (
     DATA_COORDINATOR,
     DOMAIN,
     SERVICE_CLAIM_LATEST_PENDING_TAG,
+    SERVICE_CLAIM_LATEST_PENDING_TAG_FROM_HELPERS,
     SERVICE_CLAIM_PENDING_TAG,
     SERVICE_CREATE_OBJECT,
     SERVICE_DELETE_OBJECT,
@@ -128,6 +129,19 @@ SERVICE_CLAIM_LATEST_PENDING_TAG_SCHEMA = vol.Schema(
     }
 )
 
+SERVICE_CLAIM_LATEST_PENDING_TAG_FROM_HELPERS_SCHEMA = vol.Schema(
+    {
+        vol.Required("config_entry_id"): cv.string,
+        vol.Optional("notes"): vol.Any(None, cv.string),
+        vol.Optional("icon"): vol.Any(None, cv.string),
+        vol.Optional("category"): vol.Any(None, cv.string),
+        vol.Optional("due_soon_threshold_days"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=1))),
+        vol.Optional("active", default=True): cv.boolean,
+        vol.Optional("last_reset_at"): vol.Any(None, cv.string),
+        vol.Optional("clear_name_helper", default=True): cv.boolean,
+    }
+)
+
 
 async def async_register_services(hass: HomeAssistant) -> None:
     """Register Stuck services."""
@@ -233,6 +247,47 @@ async def async_register_services(hass: HomeAssistant) -> None:
         )
         await _async_reload_entry(hass, config_entry_id)
 
+    async def handle_claim_latest_pending_tag_from_helpers(call: ServiceCall) -> None:
+        """Claim the latest pending tag using dashboard helper values."""
+        config_entry_id = call.data["config_entry_id"]
+        coordinator = await _get_coordinator(config_entry_id)
+
+        name = hass.states.get("input_text.stuck_new_object_name")
+        interval_value = hass.states.get("input_number.stuck_new_interval_value")
+        interval_unit = hass.states.get("input_select.stuck_new_interval_unit")
+
+        if name is None or not name.state.strip():
+            raise ValueError("input_text.stuck_new_object_name is empty")
+        if interval_value is None:
+            raise ValueError("input_number.stuck_new_interval_value not found")
+        if interval_unit is None:
+            raise ValueError("input_select.stuck_new_interval_unit not found")
+
+        await coordinator.async_claim_latest_pending_tag(
+            name=name.state.strip(),
+            interval_value=int(float(interval_value.state)),
+            interval_unit=interval_unit.state,
+            notes=call.data.get("notes"),
+            icon=call.data.get("icon"),
+            category=call.data.get("category"),
+            due_soon_threshold_days=call.data.get("due_soon_threshold_days"),
+            active=call.data.get("active", True),
+            last_reset_at=call.data.get("last_reset_at"),
+        )
+
+        if call.data.get("clear_name_helper", True):
+            await hass.services.async_call(
+                "input_text",
+                "set_value",
+                {
+                    "entity_id": "input_text.stuck_new_object_name",
+                    "value": "",
+                },
+                blocking=True,
+            )
+
+        await _async_reload_entry(hass, config_entry_id)
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_CREATE_OBJECT,
@@ -275,6 +330,12 @@ async def async_register_services(hass: HomeAssistant) -> None:
         handle_claim_latest_pending_tag,
         schema=SERVICE_CLAIM_LATEST_PENDING_TAG_SCHEMA,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_CLAIM_LATEST_PENDING_TAG_FROM_HELPERS,
+        handle_claim_latest_pending_tag_from_helpers,
+        schema=SERVICE_CLAIM_LATEST_PENDING_TAG_FROM_HELPERS_SCHEMA,
+    )
 
     _LOGGER.debug("Registered Stuck services")
 
@@ -289,6 +350,7 @@ async def async_unregister_services(hass: HomeAssistant) -> None:
         SERVICE_DISMISS_PENDING_TAG,
         SERVICE_CLAIM_PENDING_TAG,
         SERVICE_CLAIM_LATEST_PENDING_TAG,
+        SERVICE_CLAIM_LATEST_PENDING_TAG_FROM_HELPERS,
     ):
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)
