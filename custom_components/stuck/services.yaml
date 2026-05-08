@@ -278,3 +278,98 @@ claim_latest_pending_tag_from_helpers:
     clear_name_helper:
       selector:
         boolean:
+
+associate_existing_tag:
+  name: Associate existing tag
+  description: Turn an existing Home Assistant tag into a tracked Stuck object.
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        text:
+    tag_id:
+      selector:
+        text:
+    tag_entity_id:
+      selector:
+        entity:
+          domain: tag
+    name:
+      required: true
+      selector:
+        text:
+    interval_value:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    interval_unit:
+      required: true
+      selector:
+        select:
+          options:
+            - day
+            - week
+            - month
+    notes:
+      selector:
+        text:
+          multiline: true
+    icon:
+      selector:
+        icon:
+    category:
+      selector:
+        text:
+    due_soon_threshold_days:
+      selector:
+        number:
+          min: 1
+          mode: box
+    active:
+      selector:
+        boolean:
+    last_reset_at:
+      selector:
+        text:
+
+associate_existing_tag_from_helpers:
+  name: Associate existing tag from helpers
+  description: Turn an existing Home Assistant tag into a tracked Stuck object using the Stuck onboarding helper values.
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        text:
+    tag_id:
+      selector:
+        text:
+    tag_entity_id:
+      selector:
+        entity:
+          domain: tag
+    notes:
+      selector:
+        text:
+          multiline: true
+    icon:
+      selector:
+        icon:
+    category:
+      selector:
+        text:
+    due_soon_threshold_days:
+      selector:
+        number:
+          min: 1
+          mode: box
+    active:
+      selector:
+        boolean:
+    last_reset_at:
+      selector:
+        text:
+    clear_name_helper:
+      selector:
+        boolean:

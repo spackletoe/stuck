@@ -52,6 +52,7 @@ async def async_setup_entry(
             StuckDueSoonCountSensor(coordinator, entry.entry_id),
             StuckPendingTagCountSensor(coordinator, entry.entry_id),
             StuckLatestPendingTagSensor(coordinator, entry.entry_id),
+            StuckPendingTagInboxSensor(coordinator, entry.entry_id),
         ]
     )
 
@@ -106,6 +107,17 @@ class StuckTrackedObjectStatusSensor(StuckTrackedObjectEntity, SensorEntity):
         if obj is None:
             return None
         return self.coordinator.get_object_status(obj)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | None]:
+        obj = self.tracked_object
+        if obj is None:
+            return {}
+        return {
+            "object_id": obj.id,
+            "tag_id": obj.tag_id,
+            "object_url": self.coordinator.get_object_url(obj),
+        }
 
 
 class StuckTrackedObjectNextDueSensor(StuckTrackedObjectEntity, SensorEntity):
@@ -250,7 +262,38 @@ class StuckLatestPendingTagSensor(StuckBaseEntity, SensorEntity):
             "last_seen_at": pending.last_seen_at,
             "scan_count": pending.scan_count,
             "source_device": pending.source_device,
+            "tag_entity_id": pending.tag_entity_id,
         }
+
+
+class StuckPendingTagInboxSensor(StuckBaseEntity, SensorEntity):
+    """Sensor exposing recent pending tags as an inbox list."""
+
+    _attr_name = "Stuck Pending Tag Inbox"
+
+    def __init__(self, coordinator: StuckCoordinator, config_entry_id: str) -> None:
+        super().__init__(coordinator, config_entry_id)
+        self._attr_unique_id = f"{config_entry_id}_pending_tag_inbox"
+
+    @property
+    def native_value(self) -> int:
+        return len(self.coordinator.pending_tags)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, list[dict[str, str | int | None]]]:
+        items = []
+        for pending in self.coordinator.get_pending_tags():
+            items.append(
+                {
+                    "tag_id": pending.tag_id,
+                    "tag_entity_id": pending.tag_entity_id,
+                    "first_seen_at": pending.first_seen_at,
+                    "last_seen_at": pending.last_seen_at,
+                    "scan_count": pending.scan_count,
+                    "source_device": pending.source_device,
+                }
+            )
+        return {"pending_tags": items}
 
 
 def _format_timedelta(value: timedelta) -> str:
