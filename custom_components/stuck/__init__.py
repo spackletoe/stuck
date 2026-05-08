@@ -52,8 +52,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: StuckConfigEntry) -> boo
             return
 
         source_device = data.get("device_id") or data.get("source_device")
+        tag_entity_id = data.get("entity_id") or data.get("tag_entity_id")
         result = await tag_router.async_handle_tag_scan(
-            tag_id, source_device=source_device
+            tag_id,
+            source_device=source_device,
+            tag_entity_id=tag_entity_id,
         )
         hass.bus.async_fire(EVENT_STUCK_TAG_SCANNED, result)
 
@@ -68,6 +71,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: StuckConfigEntry) -> boo
                 ),
                 title="Stuck: New tag detected",
                 notification_id=f"stuck_pending_{tag_id}",
+            )
+        elif result.get("kind") == "known":
+            create_notification(
+                hass,
+                (
+                    f"Scanned **{result.get('name', 'Stuck object')}**.\n\n"
+                    f"Status: `{result.get('status', 'unknown')}`\n"
+                    f"Open: {result.get('object_url', '/stuck-dashboard')}"
+                ),
+                title="Stuck: Known tag scanned",
+                notification_id=f"stuck_known_{tag_id}",
             )
 
         _LOGGER.debug("Stuck tag event routed: %s", result)

@@ -19,28 +19,42 @@ class StuckTagRouter:
         self.coordinator = coordinator
 
     async def async_handle_tag_scan(
-        self, tag_id: str, *, source_device: str | None = None
+        self,
+        tag_id: str,
+        *,
+        source_device: str | None = None,
+        tag_entity_id: str | None = None,
     ) -> dict[str, Any]:
         """Handle a tag scan and return a routing result."""
         obj = self.coordinator.get_object_by_tag(tag_id)
         if obj is not None:
             _LOGGER.debug("Resolved known tag %s to object %s", tag_id, obj.id)
-            return self._known_result(obj)
+            return self._known_result(self.coordinator, obj, source_device=source_device)
 
         pending = await self.coordinator.async_upsert_pending_tag(
-            tag_id, source_device=source_device
+            tag_id,
+            source_device=source_device,
+            tag_entity_id=tag_entity_id,
         )
         _LOGGER.debug("Tracked unknown tag %s as pending", tag_id)
         return self._pending_result(pending)
 
     @staticmethod
-    def _known_result(obj: TrackedObject) -> dict[str, Any]:
+    def _known_result(
+        coordinator: StuckCoordinator,
+        obj: TrackedObject,
+        *,
+        source_device: str | None = None,
+    ) -> dict[str, Any]:
         """Return result payload for a known tag."""
         return {
             "kind": "known",
             "object_id": obj.id,
             "tag_id": obj.tag_id,
             "name": obj.name,
+            "status": coordinator.get_object_status(obj),
+            "object_url": coordinator.get_object_url(obj),
+            "source_device": source_device,
         }
 
     @staticmethod
@@ -53,4 +67,5 @@ class StuckTagRouter:
             "last_seen_at": pending.last_seen_at,
             "scan_count": pending.scan_count,
             "source_device": pending.source_device,
+            "tag_entity_id": pending.tag_entity_id,
         }

@@ -43,6 +43,7 @@ class PendingTag:
     last_seen_at: str
     scan_count: int = 1
     source_device: str | None = None
+    tag_entity_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the pending tag to a dictionary."""

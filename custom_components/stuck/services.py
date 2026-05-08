@@ -15,9 +15,12 @@ from .const import (
     ATTR_INTERVAL_UNIT,
     ATTR_INTERVAL_VALUE,
     ATTR_OBJECT_ID,
+    ATTR_TAG_ENTITY_ID,
     ATTR_TAG_ID,
     DATA_COORDINATOR,
     DOMAIN,
+    SERVICE_ASSOCIATE_EXISTING_TAG,
+    SERVICE_ASSOCIATE_EXISTING_TAG_FROM_HELPERS,
     SERVICE_CLAIM_LATEST_PENDING_TAG,
     SERVICE_CLAIM_LATEST_PENDING_TAG_FROM_HELPERS,
     SERVICE_CLAIM_PENDING_TAG,
@@ -142,6 +145,38 @@ SERVICE_CLAIM_LATEST_PENDING_TAG_FROM_HELPERS_SCHEMA = vol.Schema(
     }
 )
 
+SERVICE_ASSOCIATE_EXISTING_TAG_SCHEMA = vol.Schema(
+    {
+        vol.Required("config_entry_id"): cv.string,
+        vol.Exclusive(ATTR_TAG_ID, "tag_target"): cv.string,
+        vol.Exclusive(ATTR_TAG_ENTITY_ID, "tag_target"): cv.string,
+        vol.Required("name"): cv.string,
+        vol.Required(ATTR_INTERVAL_VALUE): vol.All(vol.Coerce(int), vol.Range(min=1)),
+        vol.Required(ATTR_INTERVAL_UNIT): vol.In(VALID_INTERVAL_UNITS),
+        vol.Optional("notes"): vol.Any(None, cv.string),
+        vol.Optional("icon"): vol.Any(None, cv.string),
+        vol.Optional("category"): vol.Any(None, cv.string),
+        vol.Optional("due_soon_threshold_days"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=1))),
+        vol.Optional("active", default=True): cv.boolean,
+        vol.Optional("last_reset_at"): vol.Any(None, cv.string),
+    }
+)
+
+SERVICE_ASSOCIATE_EXISTING_TAG_FROM_HELPERS_SCHEMA = vol.Schema(
+    {
+        vol.Required("config_entry_id"): cv.string,
+        vol.Exclusive(ATTR_TAG_ID, "tag_target"): cv.string,
+        vol.Exclusive(ATTR_TAG_ENTITY_ID, "tag_target"): cv.string,
+        vol.Optional("notes"): vol.Any(None, cv.string),
+        vol.Optional("icon"): vol.Any(None, cv.string),
+        vol.Optional("category"): vol.Any(None, cv.string),
+        vol.Optional("due_soon_threshold_days"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=1))),
+        vol.Optional("active", default=True): cv.boolean,
+        vol.Optional("last_reset_at"): vol.Any(None, cv.string),
+        vol.Optional("clear_name_helper", default=True): cv.boolean,
+    }
+)
+
 
 async def async_register_services(hass: HomeAssistant) -> None:
     """Register Stuck services."""
@@ -247,11 +282,31 @@ async def async_register_services(hass: HomeAssistant) -> None:
         )
         await _async_reload_entry(hass, config_entry_id)
 
-    async def handle_claim_latest_pending_tag_from_helpers(call: ServiceCall) -> None:
-        """Claim the latest pending tag using dashboard helper values."""
-        config_entry_id = call.data["config_entry_id"]
-        coordinator = await _get_coordinator(config_entry_id)
+    def _resolve_tag_id_from_inputs(
+        coordinator,
+        *,
+        tag_id: str | None = None,
+        tag_entity_id: str | None = None,
+    ) -> str:
+        if tag_id:
+            return tag_id
+        if not tag_entity_id:
+            raise ValueError("Either tag_id or tag_entity_id is required")
 
+        state = hass.states.get(tag_entity_id)
+        if state is None:
+            raise ValueError(f"Unknown tag entity: {tag_entity_id}")
+
+        candidate = state.attributes.get("tag_id") or state.object_id
+        if not candidate:
+            raise ValueError(f"Unable to resolve tag_id from {tag_entity_id}")
+
+        pending = coordinator.pending_tags.get(candidate)
+        if pending is not None:
+            pending.tag_entity_id = tag_entity_id
+        return candidate
+
+    def _read_onboarding_helpers() -> tuple[str, int, str]:
         name = hass.states.get("input_text.stuck_new_object_name")
         interval_value = hass.states.get("input_number.stuck_new_interval_value")
         interval_unit = hass.states.get("input_select.stuck_new_interval_unit")
@@ -263,10 +318,29 @@ async def async_register_services(hass: HomeAssistant) -> None:
         if interval_unit is None:
             raise ValueError("input_select.stuck_new_interval_unit not found")
 
+        return name.state.strip(), int(float(interval_value.state)), interval_unit.state
+
+    async def _clear_name_helper() -> None:
+        await hass.services.async_call(
+            "input_text",
+            "set_value",
+            {
+                "entity_id": "input_text.stuck_new_object_name",
+                "value": "",
+            },
+            blocking=True,
+        )
+
+    async def handle_claim_latest_pending_tag_from_helpers(call: ServiceCall) -> None:
+        """Claim the latest pending tag using dashboard helper values."""
+        config_entry_id = call.data["config_entry_id"]
+        coordinator = await _get_coordinator(config_entry_id)
+        name, interval_value, interval_unit = _read_onboarding_helpers()
+
         await coordinator.async_claim_latest_pending_tag(
-            name=name.state.strip(),
-            interval_value=int(float(interval_value.state)),
-            interval_unit=interval_unit.state,
+            name=name,
+            interval_value=interval_value,
+            interval_unit=interval_unit,
             notes=call.data.get("notes"),
             icon=call.data.get("icon"),
             category=call.data.get("category"),
@@ -276,15 +350,60 @@ async def async_register_services(hass: HomeAssistant) -> None:
         )
 
         if call.data.get("clear_name_helper", True):
-            await hass.services.async_call(
-                "input_text",
-                "set_value",
-                {
-                    "entity_id": "input_text.stuck_new_object_name",
-                    "value": "",
-                },
-                blocking=True,
-            )
+            await _clear_name_helper()
+
+        await _async_reload_entry(hass, config_entry_id)
+
+    async def handle_associate_existing_tag(call: ServiceCall) -> None:
+        """Associate an existing Home Assistant tag with a new Stuck object."""
+        config_entry_id = call.data["config_entry_id"]
+        coordinator = await _get_coordinator(config_entry_id)
+        resolved_tag_id = _resolve_tag_id_from_inputs(
+            coordinator,
+            tag_id=call.data.get(ATTR_TAG_ID),
+            tag_entity_id=call.data.get(ATTR_TAG_ENTITY_ID),
+        )
+
+        await coordinator.async_create_object(
+            name=call.data["name"],
+            tag_id=resolved_tag_id,
+            interval_value=call.data[ATTR_INTERVAL_VALUE],
+            interval_unit=call.data[ATTR_INTERVAL_UNIT],
+            notes=call.data.get("notes"),
+            icon=call.data.get("icon"),
+            category=call.data.get("category"),
+            due_soon_threshold_days=call.data.get("due_soon_threshold_days"),
+            active=call.data.get("active", True),
+            last_reset_at=call.data.get("last_reset_at"),
+        )
+        await _async_reload_entry(hass, config_entry_id)
+
+    async def handle_associate_existing_tag_from_helpers(call: ServiceCall) -> None:
+        """Associate an existing Home Assistant tag with helper-provided object data."""
+        config_entry_id = call.data["config_entry_id"]
+        coordinator = await _get_coordinator(config_entry_id)
+        name, interval_value, interval_unit = _read_onboarding_helpers()
+        resolved_tag_id = _resolve_tag_id_from_inputs(
+            coordinator,
+            tag_id=call.data.get(ATTR_TAG_ID),
+            tag_entity_id=call.data.get(ATTR_TAG_ENTITY_ID),
+        )
+
+        await coordinator.async_create_object(
+            name=name,
+            tag_id=resolved_tag_id,
+            interval_value=interval_value,
+            interval_unit=interval_unit,
+            notes=call.data.get("notes"),
+            icon=call.data.get("icon"),
+            category=call.data.get("category"),
+            due_soon_threshold_days=call.data.get("due_soon_threshold_days"),
+            active=call.data.get("active", True),
+            last_reset_at=call.data.get("last_reset_at"),
+        )
+
+        if call.data.get("clear_name_helper", True):
+            await _clear_name_helper()
 
         await _async_reload_entry(hass, config_entry_id)
 
@@ -336,6 +455,18 @@ async def async_register_services(hass: HomeAssistant) -> None:
         handle_claim_latest_pending_tag_from_helpers,
         schema=SERVICE_CLAIM_LATEST_PENDING_TAG_FROM_HELPERS_SCHEMA,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_ASSOCIATE_EXISTING_TAG,
+        handle_associate_existing_tag,
+        schema=SERVICE_ASSOCIATE_EXISTING_TAG_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_ASSOCIATE_EXISTING_TAG_FROM_HELPERS,
+        handle_associate_existing_tag_from_helpers,
+        schema=SERVICE_ASSOCIATE_EXISTING_TAG_FROM_HELPERS_SCHEMA,
+    )
 
     _LOGGER.debug("Registered Stuck services")
 
@@ -351,6 +482,8 @@ async def async_unregister_services(hass: HomeAssistant) -> None:
         SERVICE_CLAIM_PENDING_TAG,
         SERVICE_CLAIM_LATEST_PENDING_TAG,
         SERVICE_CLAIM_LATEST_PENDING_TAG_FROM_HELPERS,
+        SERVICE_ASSOCIATE_EXISTING_TAG,
+        SERVICE_ASSOCIATE_EXISTING_TAG_FROM_HELPERS,
     ):
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)

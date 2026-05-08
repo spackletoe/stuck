@@ -152,7 +152,11 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return updated
 
     async def async_upsert_pending_tag(
-        self, tag_id: str, *, source_device: str | None = None
+        self,
+        tag_id: str,
+        *,
+        source_device: str | None = None,
+        tag_entity_id: str | None = None,
     ) -> PendingTag:
         """Create or update a pending tag entry."""
         existing = self.pending_tags.get(tag_id)
@@ -165,6 +169,7 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 last_seen_at=now,
                 scan_count=1,
                 source_device=source_device,
+                tag_entity_id=tag_entity_id,
             )
         else:
             pending = replace(
@@ -172,6 +177,7 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 last_seen_at=now,
                 scan_count=existing.scan_count + 1,
                 source_device=source_device or existing.source_device,
+                tag_entity_id=tag_entity_id or existing.tag_entity_id,
             )
 
         self.pending_tags[tag_id] = pending
@@ -248,11 +254,17 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def get_latest_pending_tag(self) -> PendingTag | None:
         """Return the most recently seen pending tag."""
-        if not self.pending_tags:
+        pending_tags = self.get_pending_tags()
+        if not pending_tags:
             return None
-        return max(
+        return pending_tags[0]
+
+    def get_pending_tags(self) -> list[PendingTag]:
+        """Return pending tags sorted by most recently seen first."""
+        return sorted(
             self.pending_tags.values(),
             key=lambda pending: self._parse_utc_iso(pending.last_seen_at),
+            reverse=True,
         )
 
     def get_object_status(self, obj: TrackedObject) -> str:
@@ -277,6 +289,11 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return STATUS_DUE_SOON
 
         return STATUS_HEALTHY
+
+    def get_object_url(self, obj: TrackedObject) -> str:
+        """Return a dashboard URL for a tracked object."""
+        slug = obj.id.lower()
+        return f"/stuck-dashboard?stuck_object={slug}"
 
     def get_next_due_at(self, obj: TrackedObject) -> datetime:
         """Return the next due datetime for a tracked object."""
