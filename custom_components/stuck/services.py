@@ -18,6 +18,7 @@ from .const import (
     ATTR_TAG_ID,
     DATA_COORDINATOR,
     DOMAIN,
+    SERVICE_CLAIM_LATEST_PENDING_TAG,
     SERVICE_CLAIM_PENDING_TAG,
     SERVICE_CREATE_OBJECT,
     SERVICE_DELETE_OBJECT,
@@ -100,6 +101,21 @@ SERVICE_CLAIM_PENDING_TAG_SCHEMA = vol.Schema(
     {
         vol.Required("config_entry_id"): cv.string,
         vol.Required(ATTR_TAG_ID): cv.string,
+        vol.Required("name"): cv.string,
+        vol.Required(ATTR_INTERVAL_VALUE): vol.All(vol.Coerce(int), vol.Range(min=1)),
+        vol.Required(ATTR_INTERVAL_UNIT): vol.In(VALID_INTERVAL_UNITS),
+        vol.Optional("notes"): vol.Any(None, cv.string),
+        vol.Optional("icon"): vol.Any(None, cv.string),
+        vol.Optional("category"): vol.Any(None, cv.string),
+        vol.Optional("due_soon_threshold_days"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=1))),
+        vol.Optional("active", default=True): cv.boolean,
+        vol.Optional("last_reset_at"): vol.Any(None, cv.string),
+    }
+)
+
+SERVICE_CLAIM_LATEST_PENDING_TAG_SCHEMA = vol.Schema(
+    {
+        vol.Required("config_entry_id"): cv.string,
         vol.Required("name"): cv.string,
         vol.Required(ATTR_INTERVAL_VALUE): vol.All(vol.Coerce(int), vol.Range(min=1)),
         vol.Required(ATTR_INTERVAL_UNIT): vol.In(VALID_INTERVAL_UNITS),
@@ -200,6 +216,23 @@ async def async_register_services(hass: HomeAssistant) -> None:
         )
         await _async_reload_entry(hass, config_entry_id)
 
+    async def handle_claim_latest_pending_tag(call: ServiceCall) -> None:
+        """Turn the latest pending tag into a tracked object."""
+        config_entry_id = call.data["config_entry_id"]
+        coordinator = await _get_coordinator(config_entry_id)
+        await coordinator.async_claim_latest_pending_tag(
+            name=call.data["name"],
+            interval_value=call.data[ATTR_INTERVAL_VALUE],
+            interval_unit=call.data[ATTR_INTERVAL_UNIT],
+            notes=call.data.get("notes"),
+            icon=call.data.get("icon"),
+            category=call.data.get("category"),
+            due_soon_threshold_days=call.data.get("due_soon_threshold_days"),
+            active=call.data.get("active", True),
+            last_reset_at=call.data.get("last_reset_at"),
+        )
+        await _async_reload_entry(hass, config_entry_id)
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_CREATE_OBJECT,
@@ -236,6 +269,12 @@ async def async_register_services(hass: HomeAssistant) -> None:
         handle_claim_pending_tag,
         schema=SERVICE_CLAIM_PENDING_TAG_SCHEMA,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_CLAIM_LATEST_PENDING_TAG,
+        handle_claim_latest_pending_tag,
+        schema=SERVICE_CLAIM_LATEST_PENDING_TAG_SCHEMA,
+    )
 
     _LOGGER.debug("Registered Stuck services")
 
@@ -249,6 +288,7 @@ async def async_unregister_services(hass: HomeAssistant) -> None:
         SERVICE_RESET_OBJECT,
         SERVICE_DISMISS_PENDING_TAG,
         SERVICE_CLAIM_PENDING_TAG,
+        SERVICE_CLAIM_LATEST_PENDING_TAG,
     ):
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)

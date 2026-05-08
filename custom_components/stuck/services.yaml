@@ -197,3 +197,51 @@ claim_pending_tag:
     last_reset_at:
       selector:
         text:
+
+claim_latest_pending_tag:
+  name: Claim latest pending tag
+  description: Convert the most recently seen pending tag into a tracked Stuck object.
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        text:
+    name:
+      required: true
+      selector:
+        text:
+    interval_value:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    interval_unit:
+      required: true
+      selector:
+        select:
+          options:
+            - day
+            - week
+            - month
+    notes:
+      selector:
+        text:
+          multiline: true
+    icon:
+      selector:
+        icon:
+    category:
+      selector:
+        text:
+    due_soon_threshold_days:
+      selector:
+        number:
+          min: 1
+          mode: box
+    active:
+      selector:
+        boolean:
+    last_reset_at:
+      selector:
+        text:

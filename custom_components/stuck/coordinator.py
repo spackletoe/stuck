@@ -215,6 +215,37 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             last_reset_at=last_reset_at,
         )
 
+    async def async_claim_latest_pending_tag(
+        self,
+        *,
+        name: str,
+        interval_value: int,
+        interval_unit: str,
+        notes: str | None = None,
+        icon: str | None = None,
+        category: str | None = None,
+        due_soon_threshold_days: int | None = None,
+        active: bool = True,
+        last_reset_at: str | None = None,
+    ) -> TrackedObject:
+        """Turn the most recently seen pending tag into a tracked object."""
+        pending = self.get_latest_pending_tag()
+        if pending is None:
+            raise ValueError("No pending tags to claim")
+
+        return await self.async_claim_pending_tag(
+            tag_id=pending.tag_id,
+            name=name,
+            interval_value=interval_value,
+            interval_unit=interval_unit,
+            notes=notes,
+            icon=icon,
+            category=category,
+            due_soon_threshold_days=due_soon_threshold_days,
+            active=active,
+            last_reset_at=last_reset_at,
+        )
+
     def get_latest_pending_tag(self) -> PendingTag | None:
         """Return the most recently seen pending tag."""
         if not self.pending_tags:
