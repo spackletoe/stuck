@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from homeassistant.components.persistent_notification import async_create as create_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers.typing import ConfigType
@@ -55,6 +56,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: StuckConfigEntry) -> boo
             tag_id, source_device=source_device
         )
         hass.bus.async_fire(EVENT_STUCK_TAG_SCANNED, result)
+
+        if result.get("kind") == "pending":
+            create_notification(
+                hass,
+                (
+                    "A new NFC tag was detected by Stuck.\n\n"
+                    f"Tag ID: `{tag_id}`\n\n"
+                    "Use the `stuck.claim_pending_tag` service or the Stuck dashboard "
+                    "to turn it into a tracked object."
+                ),
+                title="Stuck: New tag detected",
+                notification_id=f"stuck_pending_{tag_id}",
+            )
+
         _LOGGER.debug("Stuck tag event routed: %s", result)
 
     remove_listener = hass.bus.async_listen(EVENT_TAG_SCANNED, async_handle_tag_scanned)

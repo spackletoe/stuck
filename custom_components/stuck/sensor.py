@@ -51,6 +51,7 @@ async def async_setup_entry(
             StuckOverdueCountSensor(coordinator, entry.entry_id),
             StuckDueSoonCountSensor(coordinator, entry.entry_id),
             StuckPendingTagCountSensor(coordinator, entry.entry_id),
+            StuckLatestPendingTagSensor(coordinator, entry.entry_id),
         ]
     )
 
@@ -221,6 +222,35 @@ class StuckPendingTagCountSensor(StuckBaseEntity, SensorEntity):
     @property
     def native_value(self) -> int:
         return len(self.coordinator.pending_tags)
+
+
+class StuckLatestPendingTagSensor(StuckBaseEntity, SensorEntity):
+    """Sensor exposing the most recently seen pending tag."""
+
+    _attr_name = "Stuck Latest Pending Tag"
+
+    def __init__(self, coordinator: StuckCoordinator, config_entry_id: str) -> None:
+        super().__init__(coordinator, config_entry_id)
+        self._attr_unique_id = f"{config_entry_id}_latest_pending_tag"
+
+    @property
+    def native_value(self) -> str | None:
+        pending = self.coordinator.get_latest_pending_tag()
+        if pending is None:
+            return None
+        return pending.tag_id
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | int | None]:
+        pending = self.coordinator.get_latest_pending_tag()
+        if pending is None:
+            return {}
+        return {
+            "first_seen_at": pending.first_seen_at,
+            "last_seen_at": pending.last_seen_at,
+            "scan_count": pending.scan_count,
+            "source_device": pending.source_device,
+        }
 
 
 def _format_timedelta(value: timedelta) -> str:

@@ -184,6 +184,46 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.pending_tags.pop(tag_id)
             await self.async_save()
 
+    async def async_claim_pending_tag(
+        self,
+        *,
+        tag_id: str,
+        name: str,
+        interval_value: int,
+        interval_unit: str,
+        notes: str | None = None,
+        icon: str | None = None,
+        category: str | None = None,
+        due_soon_threshold_days: int | None = None,
+        active: bool = True,
+        last_reset_at: str | None = None,
+    ) -> TrackedObject:
+        """Turn a pending tag into a tracked object."""
+        if tag_id not in self.pending_tags:
+            raise ValueError(f"Pending tag not found: {tag_id}")
+
+        return await self.async_create_object(
+            name=name,
+            tag_id=tag_id,
+            interval_value=interval_value,
+            interval_unit=interval_unit,
+            notes=notes,
+            icon=icon,
+            category=category,
+            due_soon_threshold_days=due_soon_threshold_days,
+            active=active,
+            last_reset_at=last_reset_at,
+        )
+
+    def get_latest_pending_tag(self) -> PendingTag | None:
+        """Return the most recently seen pending tag."""
+        if not self.pending_tags:
+            return None
+        return max(
+            self.pending_tags.values(),
+            key=lambda pending: self._parse_utc_iso(pending.last_seen_at),
+        )
+
     def get_object_status(self, obj: TrackedObject) -> str:
         """Return the derived status for a tracked object."""
         if not obj.active:
