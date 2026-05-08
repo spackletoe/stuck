@@ -17,6 +17,9 @@ A user can:
 This is not a chore manager.  
 This is object-based recurring time tracking.
 
+It is also **not** intended to become a general inventory or asset-management system.
+Stuck tracks timelines around tagged things, not product catalogs.
+
 ---
 
 
@@ -123,6 +126,7 @@ The following are not in v1:
 - analytics charts
 - object photos / attachments
 - advanced notification scheduling
+- inventory features such as quantities, purchase records, SKU/model catalogs, storage locations, or stock tracking
 
 ---
 
@@ -149,6 +153,25 @@ Represents a physical thing with a timer attached.
 - `category`
 - `due_soon_threshold_days`
 - `active`
+
+### Scope Boundary for Object Metadata
+
+Tracked objects should keep metadata intentionally light.
+
+Allowed metadata includes:
+- name
+- note
+- icon/category if useful for presentation
+- first tracked / first stuck date
+
+Stuck should avoid turning object records into product records.
+That means no drift toward fields like:
+- SKU
+- serial number
+- vendor
+- purchase price
+- quantity on hand
+- storage bin/shelf location
 
 #### Derived Fields
 
@@ -532,6 +555,65 @@ Do not let notification logic dominate v1.
 - tag reassignment requires confirmation
 
 ---
+
+## Future Model Direction
+
+The current v1 shape is a **single-track object model**:
+- one tag identifies one object
+- one object has one timer/reminder interval
+
+The likely v2 direction is a **multi-track object model**:
+- one tag still identifies one object
+- one object can have multiple tracks
+- tracks can be different kinds of timelines
+
+### Example
+
+A car could eventually have one tag but multiple tracks:
+- Oil Change — reminder track
+- Tire Rotation — reminder track
+- Registration — reminder track
+- Last Wash — elapsed-only track
+
+### Track Types
+
+#### Reminder Track
+Used when a due concept matters.
+
+Examples:
+- due every 30 days
+- due every 6 months
+- due every 5,000 miles later if non-time rules are ever added
+
+Expected behavior:
+- due soon
+- overdue
+- explicit reset
+
+#### Elapsed Track
+Used when the user mainly wants to know how long it has been since an event happened.
+
+Examples:
+- time since last wash
+- time since last deep clean
+- time since last emptied
+
+Expected behavior:
+- elapsed time only
+- no due-soon or overdue semantics unless the user later adds a reminder track too
+
+### History and Cadence
+
+This product boundary still leaves room for lightweight history.
+
+Useful future fields and derived values include:
+- first stuck / first tracked date
+- reset history
+- average cycle length
+- average early/late timing for reminder-style tracks
+- average elapsed cadence for elapsed-style tracks
+
+This history exists to describe the timeline of the tagged thing, not to turn Stuck into an inventory system.
 
 ## Success Criteria for v1
 

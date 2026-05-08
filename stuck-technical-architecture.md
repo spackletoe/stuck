@@ -23,6 +23,8 @@ The system models **physical objects**, not chores or tasks.
 
 A tag is bound to an object, and the object owns the recurring interval.
 
+This should evolve toward the tag identifying the object itself, while the object may eventually own multiple timeline tracks.
+
 ### 2. Storage-Backed Registry
 
 Do not use a pile of helpers as the source of truth.
@@ -44,6 +46,15 @@ If registration is interrupted, the pending tag remains recoverable.
 ### 5. HA-Native Surfaces
 
 Expose meaningful entities so users can build dashboards, automations, and notifications naturally.
+
+### 6. Scope Discipline
+
+Stuck should remain a tagged-object timeline tracker, not become a general inventory platform.
+
+That means:
+- lightweight object metadata is good
+- timeline history and cadence metrics are good
+- product catalog / stock-management fields are out of scope
 
 ---
 
@@ -120,6 +131,38 @@ TrackedObject:
     active: bool
 ```
 
+This is the v1 single-track shape.
+It is intentionally simple so the object registry and scan flow can stabilize first.
+
+### Future Model Direction
+
+A likely future model is:
+
+```python
+TrackedObject:
+    id: str
+    name: str
+    tag_id: str
+    created_at: datetime   # first stuck / first tracked
+    notes: str | None
+    icon: str | None
+    category: str | None
+    active: bool
+
+TrackedObjectTrack:
+    id: str
+    object_id: str
+    name: str
+    track_type: str   # reminder | elapsed
+    interval_value: int | None
+    interval_unit: str | None
+    created_at: datetime
+    last_reset_at: datetime
+    active: bool
+```
+
+This keeps the tag bound to the object rather than to a specific timer.
+
 ### Derived Fields
 
 These should be computed, not stored redundantly unless caching becomes necessary.
@@ -133,6 +176,12 @@ overdue_duration
 status
 ```
 
+For future history-aware tracks, additional derived values may include:
+- first_stuck_at display
+- average cycle length
+- average early/late timing
+- cadence consistency metrics
+
 ### Pending Tag Model
 
 ```python
@@ -143,6 +192,20 @@ PendingTag:
     scan_count: int
     source_device: str | None
 ```
+
+### Metadata Boundary
+
+Allowed object metadata should stay intentionally lightweight:
+- name
+- notes
+- icon/category
+- first tracked date
+
+Avoid broad product-record fields such as:
+- serial number
+- SKU/model catalog data
+- purchase/vendor/price data
+- quantity or location fields
 
 ---
 

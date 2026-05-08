@@ -212,6 +212,14 @@ Its attributes separate:
 
 so the long-term UI does not need to rely on a manually maintained dropdown helper.
 
+And it exposes a dynamic tracked object inventory via:
+
+```text
+sensor.stuck_tracked_objects
+```
+
+with a `tracked_objects` attribute that is intended to become the less-hardcoded dashboard truth source for object rendering.
+
 ## Resetting an object
 
 You can reset an object in two ways:
@@ -250,6 +258,7 @@ Right now the integration supports a dashboard with:
 - latest pending tag
 - pending tag inbox sensor/attributes
 - dynamic Home Assistant tag inventory via `sensor.stuck_available_ha_tags`
+- dynamic tracked object inventory via `sensor.stuck_tracked_objects`
 - per-object status
 - next due
 - elapsed time

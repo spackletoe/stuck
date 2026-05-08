@@ -54,6 +54,7 @@ async def async_setup_entry(
             StuckLatestPendingTagSensor(coordinator, entry.entry_id),
             StuckPendingTagInboxSensor(coordinator, entry.entry_id),
             StuckAvailableHATagsSensor(coordinator, entry.entry_id),
+            StuckTrackedObjectInventorySensor(coordinator, entry.entry_id),
         ]
     )
 
@@ -317,6 +318,26 @@ class StuckAvailableHATagsSensor(StuckBaseEntity, SensorEntity):
         return {
             "available_tags": inventory["available_tags"],
             "assigned_tags": inventory["assigned_tags"],
+        }
+
+
+class StuckTrackedObjectInventorySensor(StuckBaseEntity, SensorEntity):
+    """Sensor exposing tracked objects as a dynamic inventory list."""
+
+    _attr_name = "Stuck Tracked Objects"
+
+    def __init__(self, coordinator: StuckCoordinator, config_entry_id: str) -> None:
+        super().__init__(coordinator, config_entry_id)
+        self._attr_unique_id = f"{config_entry_id}_tracked_objects"
+
+    @property
+    def native_value(self) -> int:
+        return len(self.coordinator.objects)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, list[dict[str, str | bool | None]]]:
+        return {
+            "tracked_objects": self.coordinator.get_tracked_object_inventory(),
         }
 
 

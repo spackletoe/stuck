@@ -327,6 +327,41 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             'assigned_tags': [item for item in tags if item['assigned_to_stuck']],
         }
 
+    def get_tracked_object_inventory(self) -> list[dict[str, Any]]:
+        """Return tracked objects as a dashboard-friendly inventory list."""
+        items: list[dict[str, Any]] = []
+
+        for obj in sorted(self.objects.values(), key=lambda item: item.name.lower()):
+            next_due_at = self.get_next_due_at(obj)
+            status = self.get_object_status(obj)
+            items.append(
+                {
+                    'object_id': obj.id,
+                    'name': obj.name,
+                    'tag_id': obj.tag_id,
+                    'notes': obj.notes,
+                    'icon': obj.icon,
+                    'category': obj.category,
+                    'active': obj.active,
+                    'created_at': obj.created_at,
+                    'last_reset_at': obj.last_reset_at,
+                    'status': status,
+                    'next_due_at': next_due_at.isoformat(),
+                    'time_remaining': str(self.get_remaining_duration(obj)),
+                    'time_elapsed': str(self.get_elapsed_duration(obj)),
+                    'overdue_duration': str(self.get_overdue_duration(obj)),
+                    'status_entity_id': f"sensor.{_slugify(obj.name)}_status",
+                    'next_due_entity_id': f"sensor.{_slugify(obj.name)}_next_due",
+                    'time_remaining_entity_id': f"sensor.{_slugify(obj.name)}_time_remaining",
+                    'time_elapsed_entity_id': f"sensor.{_slugify(obj.name)}_time_elapsed",
+                    'overdue_entity_id': f"binary_sensor.{_slugify(obj.name)}_overdue",
+                    'reset_entity_id': f"button.{_slugify(obj.name)}_reset",
+                    'object_url': self.get_object_url(obj),
+                }
+            )
+
+        return items
+
     def get_next_due_at(self, obj: TrackedObject) -> datetime:
         """Return the next due datetime for a tracked object."""
         last_reset = self._parse_utc_iso(obj.last_reset_at)
@@ -400,3 +435,8 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         month = month_index % 12 + 1
         day = min(value.day, monthrange(year, month)[1])
         return value.replace(year=year, month=month, day=day)
+
+
+def _slugify(value: str) -> str:
+    """Create a Home Assistant style slug from an object name."""
+    return value.strip().lower().replace(' ', '_').replace('-', '_')
