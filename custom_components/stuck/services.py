@@ -21,6 +21,7 @@ from .const import (
     DOMAIN,
     SERVICE_ASSOCIATE_EXISTING_TAG,
     SERVICE_ASSOCIATE_EXISTING_TAG_FROM_HELPERS,
+    SERVICE_ASSOCIATE_SELECTED_EXISTING_TAG_FROM_HELPERS,
     SERVICE_CLAIM_LATEST_PENDING_TAG,
     SERVICE_CLAIM_LATEST_PENDING_TAG_FROM_HELPERS,
     SERVICE_CLAIM_PENDING_TAG,
@@ -177,6 +178,19 @@ SERVICE_ASSOCIATE_EXISTING_TAG_FROM_HELPERS_SCHEMA = vol.Schema(
     }
 )
 
+SERVICE_ASSOCIATE_SELECTED_EXISTING_TAG_FROM_HELPERS_SCHEMA = vol.Schema(
+    {
+        vol.Required("config_entry_id"): cv.string,
+        vol.Optional("notes"): vol.Any(None, cv.string),
+        vol.Optional("icon"): vol.Any(None, cv.string),
+        vol.Optional("category"): vol.Any(None, cv.string),
+        vol.Optional("due_soon_threshold_days"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=1))),
+        vol.Optional("active", default=True): cv.boolean,
+        vol.Optional("last_reset_at"): vol.Any(None, cv.string),
+        vol.Optional("clear_name_helper", default=True): cv.boolean,
+    }
+)
+
 
 async def async_register_services(hass: HomeAssistant) -> None:
     """Register Stuck services."""
@@ -320,6 +334,14 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
         return name.state.strip(), int(float(interval_value.state)), interval_unit.state
 
+    def _read_existing_tag_helper() -> str:
+        helper = hass.states.get("input_select.stuck_existing_tag")
+        if helper is None:
+            raise ValueError("input_select.stuck_existing_tag not found")
+        if not helper.state or helper.state in {"unknown", "unavailable"}:
+            raise ValueError("input_select.stuck_existing_tag is empty")
+        return helper.state
+
     async def _clear_name_helper() -> None:
         await hass.services.async_call(
             "input_text",
@@ -407,6 +429,35 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
         await _async_reload_entry(hass, config_entry_id)
 
+    async def handle_associate_selected_existing_tag_from_helpers(call: ServiceCall) -> None:
+        """Associate the selected existing-tag helper value using onboarding helpers."""
+        config_entry_id = call.data["config_entry_id"]
+        coordinator = await _get_coordinator(config_entry_id)
+        name, interval_value, interval_unit = _read_onboarding_helpers()
+        selected_tag_entity_id = _read_existing_tag_helper()
+        resolved_tag_id = _resolve_tag_id_from_inputs(
+            coordinator,
+            tag_entity_id=selected_tag_entity_id,
+        )
+
+        await coordinator.async_create_object(
+            name=name,
+            tag_id=resolved_tag_id,
+            interval_value=interval_value,
+            interval_unit=interval_unit,
+            notes=call.data.get("notes"),
+            icon=call.data.get("icon"),
+            category=call.data.get("category"),
+            due_soon_threshold_days=call.data.get("due_soon_threshold_days"),
+            active=call.data.get("active", True),
+            last_reset_at=call.data.get("last_reset_at"),
+        )
+
+        if call.data.get("clear_name_helper", True):
+            await _clear_name_helper()
+
+        await _async_reload_entry(hass, config_entry_id)
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_CREATE_OBJECT,
@@ -467,6 +518,12 @@ async def async_register_services(hass: HomeAssistant) -> None:
         handle_associate_existing_tag_from_helpers,
         schema=SERVICE_ASSOCIATE_EXISTING_TAG_FROM_HELPERS_SCHEMA,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_ASSOCIATE_SELECTED_EXISTING_TAG_FROM_HELPERS,
+        handle_associate_selected_existing_tag_from_helpers,
+        schema=SERVICE_ASSOCIATE_SELECTED_EXISTING_TAG_FROM_HELPERS_SCHEMA,
+    )
 
     _LOGGER.debug("Registered Stuck services")
 
@@ -484,6 +541,7 @@ async def async_unregister_services(hass: HomeAssistant) -> None:
         SERVICE_CLAIM_LATEST_PENDING_TAG_FROM_HELPERS,
         SERVICE_ASSOCIATE_EXISTING_TAG,
         SERVICE_ASSOCIATE_EXISTING_TAG_FROM_HELPERS,
+        SERVICE_ASSOCIATE_SELECTED_EXISTING_TAG_FROM_HELPERS,
     ):
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)

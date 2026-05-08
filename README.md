@@ -166,6 +166,52 @@ Expected behavior:
 
 ---
 
+## Associating an existing Home Assistant tag
+
+Stuck can now also turn an existing Home Assistant tag into a tracked object.
+
+Use either:
+
+```text
+stuck.associate_existing_tag
+```
+
+or
+
+```text
+stuck.associate_existing_tag_from_helpers
+```
+
+or, if you are driving the flow from dashboard helpers:
+
+```text
+stuck.associate_selected_existing_tag_from_helpers
+```
+
+Example service data:
+
+```yaml
+config_entry_id: YOUR_CONFIG_ENTRY_ID
+tag_entity_id: tag.garage_door
+name: HVAC Filter
+interval_value: 90
+interval_unit: day
+```
+
+This is useful for the "Use Existing HA Tag" flow where Home Assistant owns tag creation and Stuck owns object tracking.
+
+Stuck also now exposes a dynamic inventory of HA tag entities via:
+
+```text
+sensor.stuck_available_ha_tags
+```
+
+Its attributes separate:
+- `available_tags`
+- `assigned_tags`
+
+so the long-term UI does not need to rely on a manually maintained dropdown helper.
+
 ## Resetting an object
 
 You can reset an object in two ways:
@@ -201,6 +247,9 @@ Right now the integration supports a dashboard with:
 - overdue count
 - due soon count
 - pending tag count
+- latest pending tag
+- pending tag inbox sensor/attributes
+- dynamic Home Assistant tag inventory via `sensor.stuck_available_ha_tags`
 - per-object status
 - next due
 - elapsed time
@@ -251,7 +300,8 @@ Near-term priorities:
 Longer-term goals:
 
 - mobile-friendly “scan unknown tag → create object” flow
-- known tag detail and reset view
+- better "add new tag" and "use existing HA tag" onboarding flows
+- known tag detail and reset view / direct-open behavior
 - better pending tag management
 - friendlier setup and onboarding
 - a more polished HACS-ready release experience

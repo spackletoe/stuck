@@ -10,6 +10,7 @@ from typing import Any
 from uuid import uuid4
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
@@ -294,6 +295,37 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Return a dashboard URL for a tracked object."""
         slug = obj.id.lower()
         return f"/stuck-dashboard?stuck_object={slug}"
+
+    def get_tag_inventory(self) -> dict[str, list[dict[str, Any]]]:
+        """Return Home Assistant tag inventory split into available and assigned buckets."""
+        entity_registry = async_get_entity_registry(self.hass)
+        tags: list[dict[str, Any]] = []
+
+        for entry in entity_registry.entities.values():
+            if entry.entity_id.split('.', 1)[0] != 'tag':
+                continue
+
+            assigned_object = self.get_object_by_tag(entry.entity_id)
+            state = self.hass.states.get(entry.entity_id)
+            tags.append(
+                {
+                    'entity_id': entry.entity_id,
+                    'name': entry.name or entry.original_name or entry.entity_id,
+                    'tag_id': entry.entity_id,
+                    'last_scanned': None if state is None else state.state,
+                    'assigned_to_stuck': assigned_object is not None,
+                    'object_id': None if assigned_object is None else assigned_object.id,
+                    'object_name': None if assigned_object is None else assigned_object.name,
+                    'object_status': None if assigned_object is None else self.get_object_status(assigned_object),
+                    'object_url': None if assigned_object is None else self.get_object_url(assigned_object),
+                }
+            )
+
+        tags.sort(key=lambda item: item['name'].lower())
+        return {
+            'available_tags': [item for item in tags if not item['assigned_to_stuck']],
+            'assigned_tags': [item for item in tags if item['assigned_to_stuck']],
+        }
 
     def get_next_due_at(self, obj: TrackedObject) -> datetime:
         """Return the next due datetime for a tracked object."""

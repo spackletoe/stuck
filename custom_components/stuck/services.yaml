@@ -373,3 +373,36 @@ associate_existing_tag_from_helpers:
     clear_name_helper:
       selector:
         boolean:
+
+associate_selected_existing_tag_from_helpers:
+  name: Associate selected existing tag from helpers
+  description: Turn the tag selected in input_select.stuck_existing_tag into a tracked Stuck object using the onboarding helper values.
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        text:
+    notes:
+      selector:
+        text:
+          multiline: true
+    icon:
+      selector:
+        icon:
+    category:
+      selector:
+        text:
+    due_soon_threshold_days:
+      selector:
+        number:
+          min: 1
+          mode: box
+    active:
+      selector:
+        boolean:
+    last_reset_at:
+      selector:
+        text:
+    clear_name_helper:
+      selector:
+        boolean:

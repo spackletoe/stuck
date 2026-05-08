@@ -53,6 +53,7 @@ async def async_setup_entry(
             StuckPendingTagCountSensor(coordinator, entry.entry_id),
             StuckLatestPendingTagSensor(coordinator, entry.entry_id),
             StuckPendingTagInboxSensor(coordinator, entry.entry_id),
+            StuckAvailableHATagsSensor(coordinator, entry.entry_id),
         ]
     )
 
@@ -294,6 +295,29 @@ class StuckPendingTagInboxSensor(StuckBaseEntity, SensorEntity):
                 }
             )
         return {"pending_tags": items}
+
+
+class StuckAvailableHATagsSensor(StuckBaseEntity, SensorEntity):
+    """Sensor exposing the current Home Assistant tag inventory."""
+
+    _attr_name = "Stuck Available HA Tags"
+
+    def __init__(self, coordinator: StuckCoordinator, config_entry_id: str) -> None:
+        super().__init__(coordinator, config_entry_id)
+        self._attr_unique_id = f"{config_entry_id}_available_ha_tags"
+
+    @property
+    def native_value(self) -> int:
+        inventory = self.coordinator.get_tag_inventory()
+        return len(inventory["available_tags"])
+
+    @property
+    def extra_state_attributes(self) -> dict[str, list[dict[str, str | bool | None]]]:
+        inventory = self.coordinator.get_tag_inventory()
+        return {
+            "available_tags": inventory["available_tags"],
+            "assigned_tags": inventory["assigned_tags"],
+        }
 
 
 def _format_timedelta(value: timedelta) -> str:
