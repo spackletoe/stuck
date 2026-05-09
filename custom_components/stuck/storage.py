@@ -13,7 +13,7 @@ from .const import (
     STORAGE_KEY,
     STORAGE_VERSION,
 )
-from .models import IntegrationSettings, PendingTag, TrackedObject
+from .models import IntegrationSettings, OnboardingState, PendingTag, TrackedObject
 
 
 class StuckStorage:
@@ -42,6 +42,7 @@ class StuckStorage:
                     DEFAULT_SHOW_INACTIVE_OBJECTS,
                 ),
             },
+            "onboarding": data.get("onboarding", {}),
         }
 
     async def async_save(
@@ -49,6 +50,7 @@ class StuckStorage:
         objects: dict[str, TrackedObject],
         pending_tags: dict[str, PendingTag],
         settings: IntegrationSettings,
+        onboarding: OnboardingState,
     ) -> None:
         """Save the current integration state."""
         payload = {
@@ -57,6 +59,7 @@ class StuckStorage:
                 tag_id: pending.to_dict() for tag_id, pending in pending_tags.items()
             },
             "settings": settings.to_dict(),
+            "onboarding": onboarding.to_dict(),
         }
         await self._store.async_save(payload)
 
@@ -70,4 +73,5 @@ class StuckStorage:
                 "default_due_soon_threshold_days": DEFAULT_DUE_SOON_THRESHOLD_DAYS,
                 "show_inactive_objects": DEFAULT_SHOW_INACTIVE_OBJECTS,
             },
+            "onboarding": {},
         }

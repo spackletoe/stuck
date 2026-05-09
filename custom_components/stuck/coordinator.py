@@ -26,7 +26,7 @@ from .const import (
     UNIT_WEEK,
     VALID_INTERVAL_UNITS,
 )
-from .models import IntegrationSettings, PendingTag, TrackedObject, utc_now_iso
+from .models import IntegrationSettings, OnboardingState, PendingTag, TrackedObject, utc_now_iso
 from .storage import StuckStorage
 
 _LOGGER = logging.getLogger(__name__)
@@ -45,6 +45,7 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             default_due_soon_threshold_days=DEFAULT_DUE_SOON_THRESHOLD_DAYS,
             show_inactive_objects=DEFAULT_SHOW_INACTIVE_OBJECTS,
         )
+        self.onboarding = OnboardingState()
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Load integration data from storage."""
@@ -58,17 +59,68 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for tag_id, data in raw["pending_tags"].items()
         }
         self.settings = IntegrationSettings.from_dict(raw["settings"])
+        self.onboarding = OnboardingState.from_dict(raw.get("onboarding", {}))
 
         return self._snapshot()
 
     async def async_save(self) -> None:
         """Persist current state to storage and refresh listeners."""
-        await self.storage.async_save(self.objects, self.pending_tags, self.settings)
+        await self.storage.async_save(self.objects, self.pending_tags, self.settings, self.onboarding)
         self.async_set_updated_data(self._snapshot())
 
     def get_object(self, object_id: str) -> TrackedObject | None:
         """Return a tracked object by its object ID."""
         return self.objects.get(object_id)
+
+    async def async_set_onboarding_mode(
+        self,
+        mode: str,
+        *,
+        return_path: str | None = None,
+    ) -> None:
+        """Set the current onboarding mode."""
+        self.onboarding = replace(
+            self.onboarding,
+            mode=mode,
+            return_path=return_path if return_path is not None else self.onboarding.return_path,
+            updated_at=utc_now_iso(),
+        )
+        await self.async_save()
+
+    async def async_clear_onboarding_mode(self) -> None:
+        """Return onboarding mode to idle."""
+        self.onboarding = replace(
+            self.onboarding,
+            mode='idle',
+            updated_at=utc_now_iso(),
+        )
+        await self.async_save()
+
+    async def async_select_existing_tag(
+        self,
+        *,
+        tag_id: str | None = None,
+        tag_entity_id: str | None = None,
+    ) -> None:
+        """Select an existing tag for the onboarding flow."""
+        resolved_tag_id = self._normalize_tag_identifier(tag_id or tag_entity_id)
+        self.onboarding = replace(
+            self.onboarding,
+            selected_tag_id=resolved_tag_id or None,
+            selected_tag_entity_id=tag_entity_id,
+            updated_at=utc_now_iso(),
+        )
+        await self.async_save()
+
+    async def async_clear_selected_existing_tag(self) -> None:
+        """Clear the selected existing tag from onboarding state."""
+        self.onboarding = replace(
+            self.onboarding,
+            selected_tag_id=None,
+            selected_tag_entity_id=None,
+            updated_at=utc_now_iso(),
+        )
+        await self.async_save()
 
     def get_object_by_tag(self, tag_id: str) -> TrackedObject | None:
         """Return a tracked object by its tag identifier or related tag entity ID."""
@@ -348,6 +400,18 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             'assigned_tags': [item for item in tags if item['assigned_to_stuck']],
         }
 
+    def get_onboarding_state(self) -> dict[str, Any]:
+        """Return dashboard-friendly onboarding state."""
+        return {
+            'mode': self.onboarding.mode,
+            'selected_tag_id': self.onboarding.selected_tag_id,
+            'selected_tag_entity_id': self.onboarding.selected_tag_entity_id,
+            'return_path': self.onboarding.return_path,
+            'updated_at': self.onboarding.updated_at,
+            'has_pending_tags': bool(self.pending_tags),
+            'pending_count': len(self.pending_tags),
+        }
+
     def get_tracked_object_inventory(self) -> list[dict[str, Any]]:
         """Return tracked objects as a dashboard-friendly inventory list."""
         items: list[dict[str, Any]] = []
@@ -427,6 +491,7 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "objects": self.objects,
             "pending_tags": self.pending_tags,
             "settings": self.settings,
+            "onboarding": self.onboarding,
         }
 
     def _require_object(self, object_id: str) -> TrackedObject:

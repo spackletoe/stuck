@@ -55,6 +55,7 @@ async def async_setup_entry(
             StuckPendingTagInboxSensor(coordinator, entry.entry_id),
             StuckAvailableHATagsSensor(coordinator, entry.entry_id),
             StuckTrackedObjectInventorySensor(coordinator, entry.entry_id),
+            StuckOnboardingStateSensor(coordinator, entry.entry_id),
         ]
     )
 
@@ -339,6 +340,24 @@ class StuckTrackedObjectInventorySensor(StuckBaseEntity, SensorEntity):
         return {
             "tracked_objects": self.coordinator.get_tracked_object_inventory(),
         }
+
+
+class StuckOnboardingStateSensor(StuckBaseEntity, SensorEntity):
+    """Sensor exposing integration-owned onboarding flow state."""
+
+    _attr_name = "Stuck Onboarding State"
+
+    def __init__(self, coordinator: StuckCoordinator, config_entry_id: str) -> None:
+        super().__init__(coordinator, config_entry_id)
+        self._attr_unique_id = f"{config_entry_id}_onboarding_state"
+
+    @property
+    def native_value(self) -> str:
+        return self.coordinator.onboarding.mode
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | int | bool | None]:
+        return self.coordinator.get_onboarding_state()
 
 
 def _format_timedelta(value: timedelta) -> str:

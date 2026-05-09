@@ -230,6 +230,20 @@ Those tracked object entries also include friendlier display fields such as:
 
 so dashboard markdown can be more human-readable and less debug-like.
 
+Stuck now also owns onboarding flow state directly via:
+
+```text
+sensor.stuck_onboarding_state
+```
+
+with state such as:
+- `idle`
+- `create_new`
+- `use_existing`
+- `resume_pending`
+
+and service hooks for dashboard-driven onboarding flows instead of relying on flaky HA helper state.
+
 ## Resetting an object
 
 You can reset an object in two ways:

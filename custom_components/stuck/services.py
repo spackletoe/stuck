@@ -14,7 +14,11 @@ from homeassistant.helpers import config_validation as cv
 from .const import (
     ATTR_INTERVAL_UNIT,
     ATTR_INTERVAL_VALUE,
+    ATTR_MODE,
     ATTR_OBJECT_ID,
+    ATTR_RETURN_PATH,
+    ATTR_SELECTED_TAG_ENTITY_ID,
+    ATTR_SELECTED_TAG_ID,
     ATTR_TAG_ENTITY_ID,
     ATTR_TAG_ID,
     DATA_COORDINATOR,
@@ -25,10 +29,14 @@ from .const import (
     SERVICE_CLAIM_LATEST_PENDING_TAG,
     SERVICE_CLAIM_LATEST_PENDING_TAG_FROM_HELPERS,
     SERVICE_CLAIM_PENDING_TAG,
+    SERVICE_CLEAR_ONBOARDING_MODE,
+    SERVICE_CLEAR_SELECTED_EXISTING_TAG,
     SERVICE_CREATE_OBJECT,
     SERVICE_DELETE_OBJECT,
     SERVICE_DISMISS_PENDING_TAG,
     SERVICE_RESET_OBJECT,
+    SERVICE_SELECT_EXISTING_TAG,
+    SERVICE_SET_ONBOARDING_MODE,
     SERVICE_UPDATE_OBJECT,
     VALID_INTERVAL_UNITS,
 )
@@ -191,6 +199,34 @@ SERVICE_ASSOCIATE_SELECTED_EXISTING_TAG_FROM_HELPERS_SCHEMA = vol.Schema(
     }
 )
 
+SERVICE_SET_ONBOARDING_MODE_SCHEMA = vol.Schema(
+    {
+        vol.Required("config_entry_id"): cv.string,
+        vol.Required(ATTR_MODE): cv.string,
+        vol.Optional(ATTR_RETURN_PATH): vol.Any(None, cv.string),
+    }
+)
+
+SERVICE_CLEAR_ONBOARDING_MODE_SCHEMA = vol.Schema(
+    {
+        vol.Required("config_entry_id"): cv.string,
+    }
+)
+
+SERVICE_SELECT_EXISTING_TAG_SCHEMA = vol.Schema(
+    {
+        vol.Required("config_entry_id"): cv.string,
+        vol.Exclusive(ATTR_SELECTED_TAG_ID, "selected_tag"): cv.string,
+        vol.Exclusive(ATTR_SELECTED_TAG_ENTITY_ID, "selected_tag"): cv.string,
+    }
+)
+
+SERVICE_CLEAR_SELECTED_EXISTING_TAG_SCHEMA = vol.Schema(
+    {
+        vol.Required("config_entry_id"): cv.string,
+    }
+)
+
 
 async def async_register_services(hass: HomeAssistant) -> None:
     """Register Stuck services."""
@@ -334,13 +370,14 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
         return name.state.strip(), int(float(interval_value.state)), interval_unit.state
 
-    def _read_existing_tag_helper() -> str:
-        helper = hass.states.get("input_select.stuck_existing_tag")
-        if helper is None:
-            raise ValueError("input_select.stuck_existing_tag not found")
-        if not helper.state or helper.state in {"unknown", "unavailable"}:
-            raise ValueError("input_select.stuck_existing_tag is empty")
-        return helper.state
+    def _read_selected_existing_tag(coordinator) -> str:
+        selected = coordinator.onboarding.selected_tag_id
+        selected_entity = coordinator.onboarding.selected_tag_entity_id
+        if selected:
+            return selected
+        if selected_entity:
+            return _resolve_tag_id_from_inputs(coordinator, tag_entity_id=selected_entity)
+        raise ValueError("No existing HA tag is currently selected in onboarding state")
 
     async def _clear_name_helper() -> None:
         await hass.services.async_call(
@@ -374,6 +411,8 @@ async def async_register_services(hass: HomeAssistant) -> None:
         if call.data.get("clear_name_helper", True):
             await _clear_name_helper()
 
+        await coordinator.async_clear_onboarding_mode()
+        await coordinator.async_clear_selected_existing_tag()
         await _async_reload_entry(hass, config_entry_id)
 
     async def handle_associate_existing_tag(call: ServiceCall) -> None:
@@ -430,15 +469,11 @@ async def async_register_services(hass: HomeAssistant) -> None:
         await _async_reload_entry(hass, config_entry_id)
 
     async def handle_associate_selected_existing_tag_from_helpers(call: ServiceCall) -> None:
-        """Associate the selected existing-tag helper value using onboarding helpers."""
+        """Associate the selected onboarding tag using onboarding helpers."""
         config_entry_id = call.data["config_entry_id"]
         coordinator = await _get_coordinator(config_entry_id)
         name, interval_value, interval_unit = _read_onboarding_helpers()
-        selected_tag_entity_id = _read_existing_tag_helper()
-        resolved_tag_id = _resolve_tag_id_from_inputs(
-            coordinator,
-            tag_entity_id=selected_tag_entity_id,
-        )
+        resolved_tag_id = _read_selected_existing_tag(coordinator)
 
         await coordinator.async_create_object(
             name=name,
@@ -456,7 +491,35 @@ async def async_register_services(hass: HomeAssistant) -> None:
         if call.data.get("clear_name_helper", True):
             await _clear_name_helper()
 
+        await coordinator.async_clear_onboarding_mode()
+        await coordinator.async_clear_selected_existing_tag()
         await _async_reload_entry(hass, config_entry_id)
+
+    async def handle_set_onboarding_mode(call: ServiceCall) -> None:
+        """Set the integration-owned onboarding mode."""
+        coordinator = await _get_coordinator(call.data["config_entry_id"])
+        await coordinator.async_set_onboarding_mode(
+            call.data[ATTR_MODE],
+            return_path=call.data.get(ATTR_RETURN_PATH),
+        )
+
+    async def handle_clear_onboarding_mode(call: ServiceCall) -> None:
+        """Clear the integration-owned onboarding mode."""
+        coordinator = await _get_coordinator(call.data["config_entry_id"])
+        await coordinator.async_clear_onboarding_mode()
+
+    async def handle_select_existing_tag(call: ServiceCall) -> None:
+        """Select an existing HA tag for the onboarding flow."""
+        coordinator = await _get_coordinator(call.data["config_entry_id"])
+        await coordinator.async_select_existing_tag(
+            tag_id=call.data.get(ATTR_SELECTED_TAG_ID),
+            tag_entity_id=call.data.get(ATTR_SELECTED_TAG_ENTITY_ID),
+        )
+
+    async def handle_clear_selected_existing_tag(call: ServiceCall) -> None:
+        """Clear the selected tag from onboarding state."""
+        coordinator = await _get_coordinator(call.data["config_entry_id"])
+        await coordinator.async_clear_selected_existing_tag()
 
     hass.services.async_register(
         DOMAIN,
@@ -524,6 +587,30 @@ async def async_register_services(hass: HomeAssistant) -> None:
         handle_associate_selected_existing_tag_from_helpers,
         schema=SERVICE_ASSOCIATE_SELECTED_EXISTING_TAG_FROM_HELPERS_SCHEMA,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_ONBOARDING_MODE,
+        handle_set_onboarding_mode,
+        schema=SERVICE_SET_ONBOARDING_MODE_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_CLEAR_ONBOARDING_MODE,
+        handle_clear_onboarding_mode,
+        schema=SERVICE_CLEAR_ONBOARDING_MODE_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SELECT_EXISTING_TAG,
+        handle_select_existing_tag,
+        schema=SERVICE_SELECT_EXISTING_TAG_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_CLEAR_SELECTED_EXISTING_TAG,
+        handle_clear_selected_existing_tag,
+        schema=SERVICE_CLEAR_SELECTED_EXISTING_TAG_SCHEMA,
+    )
 
     _LOGGER.debug("Registered Stuck services")
 
@@ -542,6 +629,10 @@ async def async_unregister_services(hass: HomeAssistant) -> None:
         SERVICE_ASSOCIATE_EXISTING_TAG,
         SERVICE_ASSOCIATE_EXISTING_TAG_FROM_HELPERS,
         SERVICE_ASSOCIATE_SELECTED_EXISTING_TAG_FROM_HELPERS,
+        SERVICE_SET_ONBOARDING_MODE,
+        SERVICE_CLEAR_ONBOARDING_MODE,
+        SERVICE_SELECT_EXISTING_TAG,
+        SERVICE_CLEAR_SELECTED_EXISTING_TAG,
     ):
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)

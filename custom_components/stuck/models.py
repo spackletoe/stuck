@@ -72,6 +72,26 @@ class IntegrationSettings:
         return cls(**data)
 
 
+@dataclass(slots=True)
+class OnboardingState:
+    """Represents UI flow state owned by the Stuck integration."""
+
+    mode: str = "idle"
+    selected_tag_id: str | None = None
+    selected_tag_entity_id: str | None = None
+    return_path: str | None = None
+    updated_at: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize onboarding state to a dictionary."""
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "OnboardingState":
+        """Create onboarding state from stored data."""
+        return cls(**data)
+
+
 def utc_now_iso() -> str:
     """Return the current UTC time as an ISO-8601 string."""
     return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
