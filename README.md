@@ -220,6 +220,16 @@ sensor.stuck_tracked_objects
 
 with a `tracked_objects` attribute that is intended to become the less-hardcoded dashboard truth source for object rendering.
 
+Those tracked object entries also include friendlier display fields such as:
+- `status_label`
+- `next_due_label`
+- `last_reset_label`
+- `time_elapsed_label`
+- `time_remaining_label`
+- `overdue_duration_label`
+
+so dashboard markdown can be more human-readable and less debug-like.
+
 ## Resetting an object
 
 You can reset an object in two ways:

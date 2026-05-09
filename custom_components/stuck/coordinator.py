@@ -71,9 +71,10 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self.objects.get(object_id)
 
     def get_object_by_tag(self, tag_id: str) -> TrackedObject | None:
-        """Return a tracked object by its tag ID."""
+        """Return a tracked object by its tag identifier or related tag entity ID."""
+        normalized = self._normalize_tag_identifier(tag_id)
         for obj in self.objects.values():
-            if obj.tag_id == tag_id:
+            if self._normalize_tag_identifier(obj.tag_id) == normalized:
                 return obj
         return None
 
@@ -300,18 +301,21 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Return Home Assistant tag inventory split into available and assigned buckets."""
         entity_registry = async_get_entity_registry(self.hass)
         tags: list[dict[str, Any]] = []
+        seen_object_ids: set[str] = set()
 
         for entry in entity_registry.entities.values():
             if entry.entity_id.split('.', 1)[0] != 'tag':
                 continue
 
             assigned_object = self.get_object_by_tag(entry.entity_id)
+            if assigned_object is not None:
+                seen_object_ids.add(assigned_object.id)
             state = self.hass.states.get(entry.entity_id)
             tags.append(
                 {
                     'entity_id': entry.entity_id,
                     'name': entry.name or entry.original_name or entry.entity_id,
-                    'tag_id': entry.entity_id,
+                    'tag_id': self._normalize_tag_identifier(entry.entity_id),
                     'last_scanned': None if state is None else state.state,
                     'assigned_to_stuck': assigned_object is not None,
                     'object_id': None if assigned_object is None else assigned_object.id,
@@ -321,7 +325,24 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 }
             )
 
-        tags.sort(key=lambda item: item['name'].lower())
+        for obj in sorted(self.objects.values(), key=lambda item: item.name.lower()):
+            if obj.id in seen_object_ids:
+                continue
+            tags.append(
+                {
+                    'entity_id': None,
+                    'name': obj.name,
+                    'tag_id': obj.tag_id,
+                    'last_scanned': None,
+                    'assigned_to_stuck': True,
+                    'object_id': obj.id,
+                    'object_name': obj.name,
+                    'object_status': self.get_object_status(obj),
+                    'object_url': self.get_object_url(obj),
+                }
+            )
+
+        tags.sort(key=lambda item: (item['name'] or '').lower())
         return {
             'available_tags': [item for item in tags if not item['assigned_to_stuck']],
             'assigned_tags': [item for item in tags if item['assigned_to_stuck']],
@@ -334,6 +355,9 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for obj in sorted(self.objects.values(), key=lambda item: item.name.lower()):
             next_due_at = self.get_next_due_at(obj)
             status = self.get_object_status(obj)
+            remaining = self.get_remaining_duration(obj)
+            elapsed = self.get_elapsed_duration(obj)
+            overdue = self.get_overdue_duration(obj)
             items.append(
                 {
                     'object_id': obj.id,
@@ -344,12 +368,19 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     'category': obj.category,
                     'active': obj.active,
                     'created_at': obj.created_at,
+                    'created_at_label': self._format_datetime_label(obj.created_at),
                     'last_reset_at': obj.last_reset_at,
+                    'last_reset_label': self._format_relative_label(self._parse_utc_iso(obj.last_reset_at), prefix='Last reset'),
                     'status': status,
+                    'status_label': self._format_status_label(status),
                     'next_due_at': next_due_at.isoformat(),
-                    'time_remaining': str(self.get_remaining_duration(obj)),
-                    'time_elapsed': str(self.get_elapsed_duration(obj)),
-                    'overdue_duration': str(self.get_overdue_duration(obj)),
+                    'next_due_label': self._format_relative_label(next_due_at, prefix='Due'),
+                    'time_remaining': str(remaining),
+                    'time_remaining_label': self._format_duration_label(remaining, future=True),
+                    'time_elapsed': str(elapsed),
+                    'time_elapsed_label': self._format_duration_label(elapsed, past=True),
+                    'overdue_duration': str(overdue),
+                    'overdue_duration_label': self._format_duration_label(overdue, past=True),
                     'status_entity_id': f"sensor.{_slugify(obj.name)}_status",
                     'next_due_entity_id': f"sensor.{_slugify(obj.name)}_next_due",
                     'time_remaining_entity_id': f"sensor.{_slugify(obj.name)}_time_remaining",
@@ -435,6 +466,75 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         month = month_index % 12 + 1
         day = min(value.day, monthrange(year, month)[1])
         return value.replace(year=year, month=month, day=day)
+
+    @staticmethod
+    def _normalize_tag_identifier(tag_id: str | None) -> str:
+        """Normalize tag identifiers so raw tag IDs and tag.* entity IDs can match."""
+        if not tag_id:
+            return ''
+        if tag_id.startswith('tag.'):
+            return tag_id.split('.', 1)[1]
+        return tag_id
+
+    @staticmethod
+    def _format_status_label(status: str) -> str:
+        """Return a friendlier human label for object status."""
+        return status.replace('_', ' ').title()
+
+    @staticmethod
+    def _format_datetime_label(value: str) -> str:
+        """Return a compact ISO-derived display label."""
+        dt = datetime.fromisoformat(value.replace('Z', '+00:00')).astimezone(UTC)
+        return dt.strftime('%Y-%m-%d %H:%M UTC')
+
+    @staticmethod
+    def _format_relative_label(value: datetime, *, prefix: str) -> str:
+        """Return a human-readable relative datetime label."""
+        now = datetime.now(UTC)
+        delta = value - now
+        if abs(delta.total_seconds()) < 60:
+            return f'{prefix} now'
+        if delta.total_seconds() > 0:
+            return f'{prefix} in {StuckCoordinator._humanize_duration(delta)}'
+        return f'{prefix} {StuckCoordinator._humanize_duration(-delta)} ago'
+
+    @staticmethod
+    def _format_duration_label(
+        value: timedelta,
+        *,
+        future: bool = False,
+        past: bool = False,
+    ) -> str:
+        """Return a human-readable duration label."""
+        if value.total_seconds() < 0:
+            value = -value
+        human = StuckCoordinator._humanize_duration(value)
+        if future:
+            return f'in {human}'
+        if past:
+            return f'{human} ago'
+        return human
+
+    @staticmethod
+    def _humanize_duration(value: timedelta) -> str:
+        """Return a short human-friendly duration."""
+        total_seconds = int(value.total_seconds())
+        if total_seconds <= 0:
+            return '0 minutes'
+
+        days, remainder = divmod(total_seconds, 86400)
+        hours, remainder = divmod(remainder, 3600)
+        minutes, _ = divmod(remainder, 60)
+
+        parts: list[str] = []
+        if days:
+            parts.append(f"{days} day{'s' if days != 1 else ''}")
+        if hours and len(parts) < 2:
+            parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+        if minutes and len(parts) < 2:
+            parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+
+        return ', '.join(parts[:2]) or '0 minutes'
 
 
 def _slugify(value: str) -> str:
