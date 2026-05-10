@@ -376,7 +376,7 @@ associate_existing_tag_from_helpers:
 
 associate_selected_existing_tag_from_helpers:
   name: Associate selected existing tag from helpers
-  description: Turn the tag selected in input_select.stuck_existing_tag into a tracked Stuck object using the onboarding helper values.
+  description: Turn the currently selected onboarding tag into a tracked Stuck object using the onboarding helper values.
   fields:
     config_entry_id:
       required: true
@@ -406,3 +406,60 @@ associate_selected_existing_tag_from_helpers:
     clear_name_helper:
       selector:
         boolean:
+
+finish_onboarding:
+  name: Finish onboarding
+  description: Create a tracked Stuck object from the currently selected onboarding tag and clear onboarding state.
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        text:
+    name:
+      required: true
+      selector:
+        text:
+    interval_value:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    interval_unit:
+      required: true
+      selector:
+        select:
+          options:
+            - day
+            - week
+            - month
+    notes:
+      selector:
+        text:
+          multiline: true
+    icon:
+      selector:
+        icon:
+    category:
+      selector:
+        text:
+    due_soon_threshold_days:
+      selector:
+        number:
+          min: 1
+          mode: box
+    active:
+      selector:
+        boolean:
+    last_reset_at:
+      selector:
+        text:
+
+resume_latest_pending_tag:
+  name: Resume latest pending tag
+  description: Promote the most recent pending tag into onboarding selection state and jump to the shared object-details step.
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        text:

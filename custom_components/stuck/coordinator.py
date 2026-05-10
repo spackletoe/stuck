@@ -101,6 +101,7 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         *,
         tag_id: str | None = None,
         tag_entity_id: str | None = None,
+        source: str = 'existing',
     ) -> None:
         """Select an existing tag for the onboarding flow."""
         resolved_tag_id = self._normalize_tag_identifier(tag_id or tag_entity_id)
@@ -113,6 +114,7 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.onboarding,
             selected_tag_id=resolved_tag_id or None,
             selected_tag_entity_id=selected_entity_id,
+            selected_tag_source=source,
             updated_at=utc_now_iso(),
         )
         await self.async_save()
@@ -123,8 +125,57 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.onboarding,
             selected_tag_id=None,
             selected_tag_entity_id=None,
+            selected_tag_source=None,
             updated_at=utc_now_iso(),
         )
+        await self.async_save()
+
+    async def async_resume_latest_pending_tag_for_onboarding(self) -> PendingTag:
+        """Promote the latest pending tag into onboarding selection state."""
+        pending = self.get_latest_pending_tag()
+        if pending is None:
+            raise ValueError('No pending tags to resume')
+
+        await self.async_select_existing_tag(
+            tag_id=pending.tag_id,
+            tag_entity_id=pending.tag_entity_id,
+            source='pending',
+        )
+        await self.async_set_onboarding_mode('object_details')
+        return pending
+
+    async def async_finish_onboarding(
+        self,
+        *,
+        name: str,
+        interval_value: int,
+        interval_unit: str,
+        notes: str | None = None,
+        icon: str | None = None,
+        category: str | None = None,
+        due_soon_threshold_days: int | None = None,
+        active: bool = True,
+        last_reset_at: str | None = None,
+    ) -> TrackedObject:
+        """Create a tracked object from the currently selected onboarding tag."""
+        if not self.onboarding.selected_tag_id:
+            raise ValueError('No onboarding tag is currently selected')
+
+        obj = await self.async_create_object(
+            name=name,
+            tag_id=self.onboarding.selected_tag_id,
+            interval_value=interval_value,
+            interval_unit=interval_unit,
+            notes=notes,
+            icon=icon,
+            category=category,
+            due_soon_threshold_days=due_soon_threshold_days,
+            active=active,
+            last_reset_at=last_reset_at,
+        )
+        await self.async_clear_onboarding_mode()
+        await self.async_clear_selected_existing_tag()
+        return obj
         await self.async_save()
 
     def get_object_by_tag(self, tag_id: str) -> TrackedObject | None:
@@ -412,11 +463,14 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             'mode': self.onboarding.mode,
             'selected_tag_id': self.onboarding.selected_tag_id,
             'selected_tag_entity_id': self.onboarding.selected_tag_entity_id,
+            'selected_tag_source': self.onboarding.selected_tag_source,
             'selected_tag_name': None if selected_tag is None else selected_tag.get('name'),
             'return_path': self.onboarding.return_path,
             'updated_at': self.onboarding.updated_at,
             'has_pending_tags': bool(self.pending_tags),
             'pending_count': len(self.pending_tags),
+            'can_resume_pending': bool(self.pending_tags),
+            'has_selected_tag': bool(self.onboarding.selected_tag_id or self.onboarding.selected_tag_entity_id),
         }
 
     def get_selected_existing_tag_details(self) -> dict[str, Any] | None:

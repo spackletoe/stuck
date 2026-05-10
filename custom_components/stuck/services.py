@@ -19,6 +19,7 @@ from .const import (
     ATTR_RETURN_PATH,
     ATTR_SELECTED_TAG_ENTITY_ID,
     ATTR_SELECTED_TAG_ID,
+    ATTR_SELECTED_TAG_SOURCE,
     ATTR_TAG_ENTITY_ID,
     ATTR_TAG_ID,
     DATA_COORDINATOR,
@@ -34,7 +35,9 @@ from .const import (
     SERVICE_CREATE_OBJECT,
     SERVICE_DELETE_OBJECT,
     SERVICE_DISMISS_PENDING_TAG,
+    SERVICE_FINISH_ONBOARDING,
     SERVICE_RESET_OBJECT,
+    SERVICE_RESUME_LATEST_PENDING_TAG,
     SERVICE_SELECT_EXISTING_TAG,
     SERVICE_SET_ONBOARDING_MODE,
     SERVICE_UPDATE_OBJECT,
@@ -218,10 +221,32 @@ SERVICE_SELECT_EXISTING_TAG_SCHEMA = vol.Schema(
         vol.Required("config_entry_id"): cv.string,
         vol.Exclusive(ATTR_SELECTED_TAG_ID, "selected_tag"): cv.string,
         vol.Exclusive(ATTR_SELECTED_TAG_ENTITY_ID, "selected_tag"): cv.string,
+        vol.Optional(ATTR_SELECTED_TAG_SOURCE, default="existing"): cv.string,
     }
 )
 
 SERVICE_CLEAR_SELECTED_EXISTING_TAG_SCHEMA = vol.Schema(
+    {
+        vol.Required("config_entry_id"): cv.string,
+    }
+)
+
+SERVICE_FINISH_ONBOARDING_SCHEMA = vol.Schema(
+    {
+        vol.Required("config_entry_id"): cv.string,
+        vol.Required("name"): cv.string,
+        vol.Required(ATTR_INTERVAL_VALUE): vol.All(vol.Coerce(int), vol.Range(min=1)),
+        vol.Required(ATTR_INTERVAL_UNIT): vol.In(VALID_INTERVAL_UNITS),
+        vol.Optional("notes"): vol.Any(None, cv.string),
+        vol.Optional("icon"): vol.Any(None, cv.string),
+        vol.Optional("category"): vol.Any(None, cv.string),
+        vol.Optional("due_soon_threshold_days"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=1))),
+        vol.Optional("active", default=True): cv.boolean,
+        vol.Optional("last_reset_at"): vol.Any(None, cv.string),
+    }
+)
+
+SERVICE_RESUME_LATEST_PENDING_TAG_SCHEMA = vol.Schema(
     {
         vol.Required("config_entry_id"): cv.string,
     }
@@ -514,12 +539,35 @@ async def async_register_services(hass: HomeAssistant) -> None:
         await coordinator.async_select_existing_tag(
             tag_id=call.data.get(ATTR_SELECTED_TAG_ID),
             tag_entity_id=call.data.get(ATTR_SELECTED_TAG_ENTITY_ID),
+            source=call.data.get(ATTR_SELECTED_TAG_SOURCE, 'existing'),
         )
 
     async def handle_clear_selected_existing_tag(call: ServiceCall) -> None:
         """Clear the selected tag from onboarding state."""
         coordinator = await _get_coordinator(call.data["config_entry_id"])
         await coordinator.async_clear_selected_existing_tag()
+
+    async def handle_finish_onboarding(call: ServiceCall) -> None:
+        """Create a tracked object from the currently selected onboarding tag."""
+        config_entry_id = call.data["config_entry_id"]
+        coordinator = await _get_coordinator(config_entry_id)
+        await coordinator.async_finish_onboarding(
+            name=call.data["name"],
+            interval_value=call.data[ATTR_INTERVAL_VALUE],
+            interval_unit=call.data[ATTR_INTERVAL_UNIT],
+            notes=call.data.get("notes"),
+            icon=call.data.get("icon"),
+            category=call.data.get("category"),
+            due_soon_threshold_days=call.data.get("due_soon_threshold_days"),
+            active=call.data.get("active", True),
+            last_reset_at=call.data.get("last_reset_at"),
+        )
+        await _async_reload_entry(hass, config_entry_id)
+
+    async def handle_resume_latest_pending_tag(call: ServiceCall) -> None:
+        """Promote the latest pending tag into onboarding selection state."""
+        coordinator = await _get_coordinator(call.data["config_entry_id"])
+        await coordinator.async_resume_latest_pending_tag_for_onboarding()
 
     hass.services.async_register(
         DOMAIN,
@@ -611,6 +659,18 @@ async def async_register_services(hass: HomeAssistant) -> None:
         handle_clear_selected_existing_tag,
         schema=SERVICE_CLEAR_SELECTED_EXISTING_TAG_SCHEMA,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_FINISH_ONBOARDING,
+        handle_finish_onboarding,
+        schema=SERVICE_FINISH_ONBOARDING_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_RESUME_LATEST_PENDING_TAG,
+        handle_resume_latest_pending_tag,
+        schema=SERVICE_RESUME_LATEST_PENDING_TAG_SCHEMA,
+    )
 
     _LOGGER.debug("Registered Stuck services")
 
@@ -633,6 +693,8 @@ async def async_unregister_services(hass: HomeAssistant) -> None:
         SERVICE_CLEAR_ONBOARDING_MODE,
         SERVICE_SELECT_EXISTING_TAG,
         SERVICE_CLEAR_SELECTED_EXISTING_TAG,
+        SERVICE_FINISH_ONBOARDING,
+        SERVICE_RESUME_LATEST_PENDING_TAG,
     ):
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)

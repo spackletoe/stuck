@@ -79,6 +79,7 @@ class OnboardingState:
     mode: str = "idle"
     selected_tag_id: str | None = None
     selected_tag_entity_id: str | None = None
+    selected_tag_source: str | None = None
     return_path: str | None = None
     updated_at: str | None = None
 
