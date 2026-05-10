@@ -357,7 +357,11 @@ class StuckOnboardingStateSensor(StuckBaseEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, str | int | bool | None]:
-        return self.coordinator.get_onboarding_state()
+        state = self.coordinator.get_onboarding_state()
+        selected = self.coordinator.get_selected_existing_tag_details()
+        if selected is not None:
+            state["selected_tag"] = selected
+        return state
 
 
 def _format_timedelta(value: timedelta) -> str:

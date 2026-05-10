@@ -104,10 +104,15 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     ) -> None:
         """Select an existing tag for the onboarding flow."""
         resolved_tag_id = self._normalize_tag_identifier(tag_id or tag_entity_id)
+        selected_entity_id = tag_entity_id
+
+        if selected_entity_id is None and resolved_tag_id:
+            selected_entity_id = self._find_tag_entity_id_by_normalized_tag_id(resolved_tag_id)
+
         self.onboarding = replace(
             self.onboarding,
             selected_tag_id=resolved_tag_id or None,
-            selected_tag_entity_id=tag_entity_id,
+            selected_tag_entity_id=selected_entity_id,
             updated_at=utc_now_iso(),
         )
         await self.async_save()
@@ -402,14 +407,34 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def get_onboarding_state(self) -> dict[str, Any]:
         """Return dashboard-friendly onboarding state."""
+        selected_tag = self.get_selected_existing_tag_details()
         return {
             'mode': self.onboarding.mode,
             'selected_tag_id': self.onboarding.selected_tag_id,
             'selected_tag_entity_id': self.onboarding.selected_tag_entity_id,
+            'selected_tag_name': None if selected_tag is None else selected_tag.get('name'),
             'return_path': self.onboarding.return_path,
             'updated_at': self.onboarding.updated_at,
             'has_pending_tags': bool(self.pending_tags),
             'pending_count': len(self.pending_tags),
+        }
+
+    def get_selected_existing_tag_details(self) -> dict[str, Any] | None:
+        """Return the currently selected existing-tag details, if any."""
+        selected_tag_id = self.onboarding.selected_tag_id
+        selected_entity_id = self.onboarding.selected_tag_entity_id
+        if not selected_tag_id and not selected_entity_id:
+            return None
+
+        normalized = self._normalize_tag_identifier(selected_tag_id or selected_entity_id)
+        inventory = self.get_tag_inventory()
+        for tag in inventory['available_tags']:
+            if self._normalize_tag_identifier(tag.get('tag_id') or tag.get('entity_id')) == normalized:
+                return tag
+        return {
+            'name': selected_entity_id or selected_tag_id,
+            'entity_id': selected_entity_id,
+            'tag_id': selected_tag_id,
         }
 
     def get_tracked_object_inventory(self) -> list[dict[str, Any]]:
@@ -531,6 +556,16 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         month = month_index % 12 + 1
         day = min(value.day, monthrange(year, month)[1])
         return value.replace(year=year, month=month, day=day)
+
+    def _find_tag_entity_id_by_normalized_tag_id(self, tag_id: str) -> str | None:
+        """Find a tag.* entity ID by normalized tag ID."""
+        entity_registry = async_get_entity_registry(self.hass)
+        for entry in entity_registry.entities.values():
+            if entry.entity_id.split('.', 1)[0] != 'tag':
+                continue
+            if self._normalize_tag_identifier(entry.entity_id) == tag_id:
+                return entry.entity_id
+        return None
 
     @staticmethod
     def _normalize_tag_identifier(tag_id: str | None) -> str:
