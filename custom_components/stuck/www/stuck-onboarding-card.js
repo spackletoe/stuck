@@ -10,6 +10,11 @@ class StuckOnboardingCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    this._draft = this._draft || {
+      name: '',
+      interval_value: '30',
+      interval_unit: 'day',
+    };
     this.render();
   }
 
@@ -108,18 +113,18 @@ class StuckOnboardingCard extends HTMLElement {
         <div class="field-group">
           <label>
             Object name
-            <input id="stuck-name" type="text" placeholder="Litter Box" />
+            <input id="stuck-name" type="text" placeholder="Litter Box" value="${this._escapeAttr(this._draft?.name || '')}" />
           </label>
           <label>
             Interval value
-            <input id="stuck-interval-value" type="number" min="1" value="30" />
+            <input id="stuck-interval-value" type="number" min="1" value="${this._escapeAttr(this._draft?.interval_value || '30')}" />
           </label>
           <label>
             Interval unit
             <select id="stuck-interval-unit">
-              <option value="day">day</option>
-              <option value="week">week</option>
-              <option value="month">month</option>
+              <option value="day" ${this._draft?.interval_unit === 'day' ? 'selected' : ''}>day</option>
+              <option value="week" ${this._draft?.interval_unit === 'week' ? 'selected' : ''}>week</option>
+              <option value="month" ${this._draft?.interval_unit === 'month' ? 'selected' : ''}>month</option>
             </select>
           </label>
         </div>
@@ -134,6 +139,36 @@ class StuckOnboardingCard extends HTMLElement {
     `;
   }
 
+  _escapeAttr(value) {
+    return String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('"', '&quot;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
+  }
+
+  _bindDraftInputs() {
+    const nameInput = this.shadowRoot.getElementById('stuck-name');
+    const intervalValueInput = this.shadowRoot.getElementById('stuck-interval-value');
+    const intervalUnitInput = this.shadowRoot.getElementById('stuck-interval-unit');
+
+    if (nameInput) {
+      nameInput.addEventListener('input', (ev) => {
+        this._draft.name = ev.target.value;
+      });
+    }
+    if (intervalValueInput) {
+      intervalValueInput.addEventListener('input', (ev) => {
+        this._draft.interval_value = ev.target.value;
+      });
+    }
+    if (intervalUnitInput) {
+      intervalUnitInput.addEventListener('change', (ev) => {
+        this._draft.interval_unit = ev.target.value;
+      });
+    }
+  }
+
   render() {
     if (!this._hass || !this.config) return;
 
@@ -146,6 +181,17 @@ class StuckOnboardingCard extends HTMLElement {
 
     if (!this.shadowRoot) {
       this.attachShadow({ mode: 'open' });
+    }
+
+    const modeChanged = this._lastRenderedMode !== mode;
+    const selectedTagChanged = JSON.stringify(this._lastSelectedTag || null) !== JSON.stringify(selectedTag || null);
+    const shouldPreserveObjectDetails =
+      mode === 'object_details' &&
+      this._lastRenderedMode === 'object_details' &&
+      !selectedTagChanged;
+
+    if (shouldPreserveObjectDetails) {
+      return;
     }
 
     let content = '';
@@ -201,6 +247,11 @@ class StuckOnboardingCard extends HTMLElement {
       </ha-card>
     `;
 
+    this._bindDraftInputs();
+
+    this._lastRenderedMode = mode;
+    this._lastSelectedTag = selectedTag ? { ...selectedTag } : null;
+
     this.shadowRoot.querySelectorAll('[data-action]').forEach((el) => {
       el.addEventListener('click', async (event) => {
         const action = event.currentTarget.dataset.action;
@@ -227,16 +278,27 @@ class StuckOnboardingCard extends HTMLElement {
         } else if (action === 'open-tags') {
           window.open('/config/tags', '_blank', 'noopener');
         } else if (action === 'resume-pending') {
-          await this._callService('stuck.resume_latest_pending_tag', {
-            config_entry_id: configEntryId,
-          });
+          try {
+            await this._callService('stuck.resume_latest_pending_tag', {
+              config_entry_id: configEntryId,
+            });
+          } catch (err) {
+            console.error('stuck.resume_latest_pending_tag failed', err);
+            alert('Stuck does not see a recent pending tag yet. Finish creating the tag in Home Assistant, then come back and try again.');
+          }
         } else if (action === 'select-tag') {
-          await this._callService('stuck.select_existing_tag', {
+          const payload = {
             config_entry_id: configEntryId,
-            selected_tag_id: event.currentTarget.dataset.tagId || undefined,
-            selected_tag_entity_id: event.currentTarget.dataset.tagEntityId || undefined,
             selected_tag_source: 'existing',
-          });
+          };
+          const tagEntityId = event.currentTarget.dataset.tagEntityId;
+          const tagId = event.currentTarget.dataset.tagId;
+          if (tagEntityId) {
+            payload.selected_tag_entity_id = tagEntityId;
+          } else if (tagId) {
+            payload.selected_tag_id = tagId;
+          }
+          await this._callService('stuck.select_existing_tag', payload);
         } else if (action === 'continue-details') {
           await this._callService('stuck.set_onboarding_mode', {
             config_entry_id: configEntryId,
@@ -244,9 +306,9 @@ class StuckOnboardingCard extends HTMLElement {
             return_path: '/stuck-dashboard',
           });
         } else if (action === 'finish-onboarding') {
-          const name = this.shadowRoot.getElementById('stuck-name')?.value?.trim();
-          const intervalValue = parseInt(this.shadowRoot.getElementById('stuck-interval-value')?.value || '0', 10);
-          const intervalUnit = this.shadowRoot.getElementById('stuck-interval-unit')?.value;
+          const name = (this._draft.name || '').trim();
+          const intervalValue = parseInt(this._draft.interval_value || '0', 10);
+          const intervalUnit = this._draft.interval_unit;
           if (!name || !intervalValue || !intervalUnit) return;
           await this._callService('stuck.finish_onboarding', {
             config_entry_id: configEntryId,
@@ -254,6 +316,7 @@ class StuckOnboardingCard extends HTMLElement {
             interval_value: intervalValue,
             interval_unit: intervalUnit,
           });
+          this._draft = { name: '', interval_value: '30', interval_unit: 'day' };
         } else if (action === 'back') {
           await this._callService('stuck.set_onboarding_mode', {
             config_entry_id: configEntryId,
