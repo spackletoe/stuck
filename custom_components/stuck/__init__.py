@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from homeassistant.components.persistent_notification import async_create as create_notification
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers.typing import ConfigType
 
@@ -28,6 +28,13 @@ _LOGGER = logging.getLogger(__name__)
 type StuckConfigEntry = ConfigEntry
 
 
+async def _async_config_entry_changed(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload integration when config entry options or data change."""
+    if entry.state is not ConfigEntryState.LOADED:
+        return
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Stuck integration from YAML."""
     hass.data.setdefault(DOMAIN, {})
@@ -39,8 +46,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: StuckConfigEntry) -> boo
     hass.data.setdefault(DOMAIN, {})
 
     storage = StuckStorage(hass)
-    coordinator = StuckCoordinator(hass, storage)
+    coordinator = StuckCoordinator(hass, storage, entry)
     await coordinator.async_config_entry_first_refresh()
+    entry.async_on_unload(entry.add_update_listener(_async_config_entry_changed))
     tag_router = StuckTagRouter(coordinator)
 
     @callback

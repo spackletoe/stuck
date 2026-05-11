@@ -9,11 +9,14 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
+    CONF_DEFAULT_DUE_SOON_THRESHOLD_DAYS,
+    CONF_SHOW_INACTIVE_OBJECTS,
     DEFAULT_DUE_SOON_THRESHOLD_DAYS,
     DEFAULT_SHOW_INACTIVE_OBJECTS,
     DOMAIN,
@@ -35,10 +38,17 @@ _LOGGER = logging.getLogger(__name__)
 class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinate in-memory state for the Stuck integration."""
 
-    def __init__(self, hass: HomeAssistant, storage: StuckStorage) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        storage: StuckStorage,
+        config_entry: ConfigEntry | None = None,
+    ) -> None:
         """Initialize the coordinator."""
         super().__init__(hass, logger=_LOGGER, name=DOMAIN)
         self.storage = storage
+        self._config_entry = config_entry
+        self._config_entry_id = config_entry.entry_id if config_entry else ""
         self.objects: dict[str, TrackedObject] = {}
         self.pending_tags: dict[str, PendingTag] = {}
         self.settings = IntegrationSettings(
@@ -46,6 +56,28 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             show_inactive_objects=DEFAULT_SHOW_INACTIVE_OBJECTS,
         )
         self.onboarding = OnboardingState()
+
+    def _apply_config_entry_settings(self) -> None:
+        """Overlay config entry data/options onto integration settings."""
+        if self._config_entry is None:
+            return
+        merged = {**self._config_entry.data, **self._config_entry.options}
+        threshold = merged.get(CONF_DEFAULT_DUE_SOON_THRESHOLD_DAYS)
+        show_inactive = merged.get(CONF_SHOW_INACTIVE_OBJECTS)
+        updates: dict[str, Any] = {}
+        if threshold is not None:
+            updates["default_due_soon_threshold_days"] = int(threshold)
+        if show_inactive is not None:
+            updates["show_inactive_objects"] = bool(show_inactive)
+        if updates:
+            self.settings = replace(self.settings, **updates)
+
+    def list_tracked_objects_for_ui(self) -> list[TrackedObject]:
+        """Tracked objects exposed as entities and in dashboard inventory."""
+        objects = sorted(self.objects.values(), key=lambda item: item.name.lower())
+        if self.settings.show_inactive_objects:
+            return list(objects)
+        return [obj for obj in objects if obj.active]
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Load integration data from storage."""
@@ -59,12 +91,14 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for tag_id, data in raw["pending_tags"].items()
         }
         self.settings = IntegrationSettings.from_dict(raw["settings"])
+        self._apply_config_entry_settings()
         self.onboarding = OnboardingState.from_dict(raw.get("onboarding", {}))
 
         return self._snapshot()
 
     async def async_save(self) -> None:
         """Persist current state to storage and refresh listeners."""
+        self._apply_config_entry_settings()
         await self.storage.async_save(self.objects, self.pending_tags, self.settings, self.onboarding)
         self.async_set_updated_data(self._snapshot())
 
@@ -176,7 +210,6 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await self.async_clear_onboarding_mode()
         await self.async_clear_selected_existing_tag()
         return obj
-        await self.async_save()
 
     def get_object_by_tag(self, tag_id: str) -> TrackedObject | None:
         """Return a tracked object by its tag identifier or related tag entity ID."""
@@ -495,7 +528,7 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Return tracked objects as a dashboard-friendly inventory list."""
         items: list[dict[str, Any]] = []
 
-        for obj in sorted(self.objects.values(), key=lambda item: item.name.lower()):
+        for obj in self.list_tracked_objects_for_ui():
             next_due_at = self.get_next_due_at(obj)
             status = self.get_object_status(obj)
             remaining = self.get_remaining_duration(obj)
@@ -524,17 +557,27 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     'time_elapsed_label': self._format_duration_label(elapsed, past=True),
                     'overdue_duration': str(overdue),
                     'overdue_duration_label': self._format_duration_label(overdue, past=True),
-                    'status_entity_id': f"sensor.{_slugify(obj.name)}_status",
-                    'next_due_entity_id': f"sensor.{_slugify(obj.name)}_next_due",
-                    'time_remaining_entity_id': f"sensor.{_slugify(obj.name)}_time_remaining",
-                    'time_elapsed_entity_id': f"sensor.{_slugify(obj.name)}_time_elapsed",
-                    'overdue_entity_id': f"binary_sensor.{_slugify(obj.name)}_overdue",
-                    'reset_entity_id': f"button.{_slugify(obj.name)}_reset",
+                    'status_entity_id': self._tracked_object_entity_id('sensor', obj, 'status'),
+                    'next_due_entity_id': self._tracked_object_entity_id('sensor', obj, 'next_due'),
+                    'time_remaining_entity_id': self._tracked_object_entity_id('sensor', obj, 'time_remaining'),
+                    'time_elapsed_entity_id': self._tracked_object_entity_id('sensor', obj, 'time_elapsed'),
+                    'overdue_entity_id': self._tracked_object_entity_id('binary_sensor', obj, 'overdue'),
+                    'reset_entity_id': self._tracked_object_entity_id('button', obj, 'reset'),
                     'object_url': self.get_object_url(obj),
                 }
             )
 
         return items
+
+    def _tracked_object_entity_id(self, domain: str, obj: TrackedObject, suffix: str) -> str:
+        """Resolve entity id from the registry when possible, else a name-based guess."""
+        if self._config_entry_id:
+            unique_id = f"{self._config_entry_id}_{obj.id}_{suffix}"
+            er = async_get_entity_registry(self.hass)
+            resolved = er.async_get_entity_id(domain, DOMAIN, unique_id)
+            if resolved is not None:
+                return resolved
+        return f"{domain}.{_slugify(obj.name)}_{suffix}"
 
     def get_next_due_at(self, obj: TrackedObject) -> datetime:
         """Return the next due datetime for a tracked object."""

@@ -23,26 +23,26 @@ async def async_setup_entry(
     """Set up Stuck sensor entities for a config entry."""
     coordinator: StuckCoordinator = hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR]
 
+    shown = coordinator.list_tracked_objects_for_ui()
     entities: list[SensorEntity] = [
-        StuckTrackedObjectStatusSensor(coordinator, entry.entry_id, obj)
-        for obj in coordinator.objects.values()
+        StuckTrackedObjectStatusSensor(coordinator, entry.entry_id, obj) for obj in shown
     ]
     entities.extend(
         [
             StuckTrackedObjectNextDueSensor(coordinator, entry.entry_id, obj)
-            for obj in coordinator.objects.values()
+            for obj in shown
         ]
     )
     entities.extend(
         [
             StuckTrackedObjectTimeRemainingSensor(coordinator, entry.entry_id, obj)
-            for obj in coordinator.objects.values()
+            for obj in shown
         ]
     )
     entities.extend(
         [
             StuckTrackedObjectTimeElapsedSensor(coordinator, entry.entry_id, obj)
-            for obj in coordinator.objects.values()
+            for obj in shown
         ]
     )
     entities.extend(
@@ -186,7 +186,16 @@ class StuckObjectCountSensor(StuckBaseEntity, SensorEntity):
 
     @property
     def native_value(self) -> int:
-        return len(self.coordinator.objects)
+        return len(self.coordinator.list_tracked_objects_for_ui())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, int]:
+        total = len(self.coordinator.objects)
+        shown = len(self.coordinator.list_tracked_objects_for_ui())
+        return {
+            "total_tracked_objects": total,
+            "inactive_objects_hidden": max(0, total - shown),
+        }
 
 
 class StuckOverdueCountSensor(StuckBaseEntity, SensorEntity):
@@ -333,12 +342,18 @@ class StuckTrackedObjectInventorySensor(StuckBaseEntity, SensorEntity):
 
     @property
     def native_value(self) -> int:
-        return len(self.coordinator.objects)
+        return len(self.coordinator.list_tracked_objects_for_ui())
 
     @property
-    def extra_state_attributes(self) -> dict[str, list[dict[str, str | bool | None]]]:
+    def extra_state_attributes(
+        self,
+    ) -> dict[str, list[dict[str, str | bool | None]] | int]:
+        total = len(self.coordinator.objects)
+        shown = len(self.coordinator.list_tracked_objects_for_ui())
         return {
             "tracked_objects": self.coordinator.get_tracked_object_inventory(),
+            "total_tracked_objects": total,
+            "inactive_objects_hidden": max(0, total - shown),
         }
 
 

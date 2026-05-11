@@ -22,7 +22,7 @@ async def async_setup_entry(
     coordinator: StuckCoordinator = hass.data[DOMAIN][entry.entry_id][DATA_COORDINATOR]
     entities = [
         StuckOverdueBinarySensor(coordinator, entry.entry_id, obj)
-        for obj in coordinator.objects.values()
+        for obj in coordinator.list_tracked_objects_for_ui()
     ]
     async_add_entities(entities)
 

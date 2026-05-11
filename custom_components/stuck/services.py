@@ -291,6 +291,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
             if key not in {"config_entry_id", ATTR_OBJECT_ID}
         }
         await coordinator.async_update_object(call.data[ATTR_OBJECT_ID], **changes)
+        await _async_reload_entry(hass, call.data["config_entry_id"])
 
     async def handle_delete_object(call: ServiceCall) -> None:
         """Handle object deletion."""
