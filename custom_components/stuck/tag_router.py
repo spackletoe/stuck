@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 from .coordinator import StuckCoordinator
-from .models import PendingTag, TrackedObject
+from .models import PendingTag
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,7 +29,9 @@ class StuckTagRouter:
         obj = self.coordinator.get_object_by_tag(tag_id)
         if obj is not None:
             _LOGGER.debug("Resolved known tag %s to object %s", tag_id, obj.id)
-            return self._known_result(self.coordinator, obj, source_device=source_device)
+            return self.coordinator.build_known_tag_scan_payload(
+                obj, source_device=source_device
+            )
 
         pending = await self.coordinator.async_upsert_pending_tag(
             tag_id,
@@ -39,29 +41,11 @@ class StuckTagRouter:
         _LOGGER.debug("Tracked unknown tag %s as pending", tag_id)
         return self._pending_result(pending)
 
-    @staticmethod
-    def _known_result(
-        coordinator: StuckCoordinator,
-        obj: TrackedObject,
-        *,
-        source_device: str | None = None,
-    ) -> dict[str, Any]:
-        """Return result payload for a known tag."""
-        return {
-            "kind": "known",
-            "object_id": obj.id,
-            "tag_id": obj.tag_id,
-            "name": obj.name,
-            "status": coordinator.get_object_status(obj),
-            "object_url": coordinator.get_object_url(obj),
-            "source_device": source_device,
-        }
-
-    @staticmethod
-    def _pending_result(pending: PendingTag) -> dict[str, Any]:
+    def _pending_result(self, pending: PendingTag) -> dict[str, Any]:
         """Return result payload for an unknown tag."""
         return {
             "kind": "pending",
+            "config_entry_id": self.coordinator.config_entry_id,
             "tag_id": pending.tag_id,
             "first_seen_at": pending.first_seen_at,
             "last_seen_at": pending.last_seen_at,

@@ -57,6 +57,11 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.onboarding = OnboardingState()
 
+    @property
+    def config_entry_id(self) -> str:
+        """Config entry id for this coordinator instance."""
+        return self._config_entry_id
+
     def _apply_config_entry_settings(self) -> None:
         """Overlay config entry data/options onto integration settings."""
         if self._config_entry is None:
@@ -524,50 +529,69 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             'tag_id': selected_tag_id,
         }
 
+    def _tracked_object_row(self, obj: TrackedObject) -> dict[str, Any]:
+        """Build a dashboard-friendly dict for one tracked object."""
+        next_due_at = self.get_next_due_at(obj)
+        status = self.get_object_status(obj)
+        remaining = self.get_remaining_duration(obj)
+        elapsed = self.get_elapsed_duration(obj)
+        overdue = self.get_overdue_duration(obj)
+        return {
+            'object_id': obj.id,
+            'name': obj.name,
+            'tag_id': obj.tag_id,
+            'interval_value': obj.interval_value,
+            'interval_unit': obj.interval_unit,
+            'notes': obj.notes,
+            'icon': obj.icon,
+            'category': obj.category,
+            'active': obj.active,
+            'created_at': obj.created_at,
+            'created_at_label': self._format_datetime_label(obj.created_at),
+            'last_reset_at': obj.last_reset_at,
+            'last_reset_label': self._format_relative_label(
+                self._parse_utc_iso(obj.last_reset_at), prefix='Last reset'
+            ),
+            'status': status,
+            'status_label': self._format_status_label(status),
+            'next_due_at': next_due_at.isoformat(),
+            'next_due_label': self._format_relative_label(next_due_at, prefix='Due'),
+            'time_remaining': str(remaining),
+            'time_remaining_label': self._format_duration_label(remaining, future=True),
+            'time_elapsed': str(elapsed),
+            'time_elapsed_label': self._format_duration_label(elapsed, past=True),
+            'overdue_duration': str(overdue),
+            'overdue_duration_label': self._format_duration_label(overdue, past=True),
+            'status_entity_id': self._tracked_object_entity_id('sensor', obj, 'status'),
+            'next_due_entity_id': self._tracked_object_entity_id('sensor', obj, 'next_due'),
+            'time_remaining_entity_id': self._tracked_object_entity_id(
+                'sensor', obj, 'time_remaining'
+            ),
+            'time_elapsed_entity_id': self._tracked_object_entity_id(
+                'sensor', obj, 'time_elapsed'
+            ),
+            'overdue_entity_id': self._tracked_object_entity_id('binary_sensor', obj, 'overdue'),
+            'reset_entity_id': self._tracked_object_entity_id('button', obj, 'reset'),
+            'object_url': self.get_object_url(obj),
+        }
+
     def get_tracked_object_inventory(self) -> list[dict[str, Any]]:
         """Return tracked objects as a dashboard-friendly inventory list."""
-        items: list[dict[str, Any]] = []
+        return [
+            self._tracked_object_row(obj) for obj in self.list_tracked_objects_for_ui()
+        ]
 
-        for obj in self.list_tracked_objects_for_ui():
-            next_due_at = self.get_next_due_at(obj)
-            status = self.get_object_status(obj)
-            remaining = self.get_remaining_duration(obj)
-            elapsed = self.get_elapsed_duration(obj)
-            overdue = self.get_overdue_duration(obj)
-            items.append(
-                {
-                    'object_id': obj.id,
-                    'name': obj.name,
-                    'tag_id': obj.tag_id,
-                    'notes': obj.notes,
-                    'icon': obj.icon,
-                    'category': obj.category,
-                    'active': obj.active,
-                    'created_at': obj.created_at,
-                    'created_at_label': self._format_datetime_label(obj.created_at),
-                    'last_reset_at': obj.last_reset_at,
-                    'last_reset_label': self._format_relative_label(self._parse_utc_iso(obj.last_reset_at), prefix='Last reset'),
-                    'status': status,
-                    'status_label': self._format_status_label(status),
-                    'next_due_at': next_due_at.isoformat(),
-                    'next_due_label': self._format_relative_label(next_due_at, prefix='Due'),
-                    'time_remaining': str(remaining),
-                    'time_remaining_label': self._format_duration_label(remaining, future=True),
-                    'time_elapsed': str(elapsed),
-                    'time_elapsed_label': self._format_duration_label(elapsed, past=True),
-                    'overdue_duration': str(overdue),
-                    'overdue_duration_label': self._format_duration_label(overdue, past=True),
-                    'status_entity_id': self._tracked_object_entity_id('sensor', obj, 'status'),
-                    'next_due_entity_id': self._tracked_object_entity_id('sensor', obj, 'next_due'),
-                    'time_remaining_entity_id': self._tracked_object_entity_id('sensor', obj, 'time_remaining'),
-                    'time_elapsed_entity_id': self._tracked_object_entity_id('sensor', obj, 'time_elapsed'),
-                    'overdue_entity_id': self._tracked_object_entity_id('binary_sensor', obj, 'overdue'),
-                    'reset_entity_id': self._tracked_object_entity_id('button', obj, 'reset'),
-                    'object_url': self.get_object_url(obj),
-                }
-            )
-
-        return items
+    def build_known_tag_scan_payload(
+        self, obj: TrackedObject, *, source_device: str | None = None
+    ) -> dict[str, Any]:
+        """Return bus event payload for a known tag scan (includes live dashboard fields)."""
+        row = self._tracked_object_row(obj)
+        return {
+            'kind': 'known',
+            'config_entry_id': self._config_entry_id,
+            'source_device': source_device,
+            **row,
+        }
 
     def _tracked_object_entity_id(self, domain: str, obj: TrackedObject, suffix: str) -> str:
         """Resolve entity id from the registry when possible, else a name-based guess."""
