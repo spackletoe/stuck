@@ -1,0 +1,31 @@
+# Stuck — phone-friendly Lovelace (storage / UI dashboards)
+#
+# Use this file when you manage dashboards in the UI (default "storage" mode):
+#   add the two JavaScript module resources under Settings → Dashboards → Resources,
+#   then paste the `views:` block into your dashboard raw YAML.
+#
+# For a dedicated sidebar dashboard defined in YAML, use instead:
+#   - dashboards/stuck_phone_dashboard.yaml  → copy to /config/stuck-phone-dashboard.yaml
+#   - dashboards/lovelace_yaml_fragment.yaml → merge into configuration.yaml
+#
+# Replace REPLACE_WITH_CONFIG_ENTRY_ID (sensor.stuck_onboarding_state → config_entry_id).
+
+views:
+  - title: Stuck
+    path: stuck-phone
+    icon: mdi:nfc-variant
+    theme: default
+    cards:
+      - type: markdown
+        content: >
+          **Stuck** — scan an NFC tag for status, or use **Add object** to register
+          a new sticker or Home Assistant tag. You can delete this hint card anytime.
+      - type: custom:stuck-scan-status-card
+        title: Last NFC scan
+        config_entry_id: REPLACE_WITH_CONFIG_ENTRY_ID
+        tracked_objects_entity: sensor.stuck_tracked_objects
+      - type: custom:stuck-onboarding-card
+        title: Add object to Stuck
+        config_entry_id: REPLACE_WITH_CONFIG_ENTRY_ID
+        onboardingEntity: sensor.stuck_onboarding_state
+        tagInventoryEntity: sensor.stuck_available_ha_tags

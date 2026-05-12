@@ -1,0 +1,31 @@
+# =============================================================================
+# Option A — No `lovelace:` block in configuration.yaml yet:
+#   Append this entire file to configuration.yaml (remove comment lines if you prefer).
+#
+# Option B — You already have `lovelace:`:
+#   Do not duplicate the top-level `lovelace:` key. Manually merge:
+#     - resource_mode + resources (append Stuck URLs to resources if list exists)
+#     - dashboards.stuck-phone (add the stuck-phone map entry)
+#
+# resource_mode: yaml forces ALL custom card resources to be listed in YAML.
+# If you rely on the UI for other cards, keep default resource_mode and use
+# Settings → Dashboards → Resources for the two /stuck/www/ URLs instead; then
+# only add the `dashboards:` section from this file (still under lovelace:).
+#
+# After changes: Developer tools → YAML → Reload "Lovelace configuration".
+# =============================================================================
+
+lovelace:
+  resource_mode: yaml
+  resources:
+    - url: /stuck/www/stuck-onboarding-card.js
+      type: module
+    - url: /stuck/www/stuck-scan-status-card.js
+      type: module
+  dashboards:
+    stuck-phone:
+      mode: yaml
+      filename: stuck-phone-dashboard.yaml
+      title: Stuck
+      icon: mdi:nfc-variant
+      show_in_sidebar: true

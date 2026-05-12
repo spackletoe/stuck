@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.components.persistent_notification import async_create as create_notification
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import Event, HomeAssistant, callback
@@ -25,6 +27,8 @@ from .tag_router import StuckTagRouter
 
 _LOGGER = logging.getLogger(__name__)
 
+HTTP_DATA_KEY = f"{DOMAIN}_http"
+
 type StuckConfigEntry = ConfigEntry
 
 
@@ -38,6 +42,35 @@ async def _async_config_entry_changed(hass: HomeAssistant, entry: ConfigEntry) -
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Stuck integration from YAML."""
     hass.data.setdefault(DOMAIN, {})
+    http_bucket = hass.data.setdefault(HTTP_DATA_KEY, {})
+    if http_bucket.get("www_registered"):
+        return True
+
+    www_dir = Path(__file__).parent / "www"
+    if www_dir.is_dir():
+        try:
+            await hass.http.async_register_static_paths(
+                [
+                    StaticPathConfig(
+                        "/stuck/www",
+                        str(www_dir),
+                        cache_headers=False,
+                    )
+                ]
+            )
+            _LOGGER.debug("Registered Stuck Lovelace static path /stuck/www -> %s", www_dir)
+        except OSError:
+            _LOGGER.warning(
+                "Could not register Stuck Lovelace path /stuck/www (filesystem error)",
+                exc_info=True,
+            )
+        except Exception:  # noqa: BLE001
+            _LOGGER.warning(
+                "Could not register Stuck Lovelace path /stuck/www (path may already exist)",
+                exc_info=True,
+            )
+
+    http_bucket["www_registered"] = True
     return True
 
 

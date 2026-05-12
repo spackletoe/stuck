@@ -1,0 +1,29 @@
+# Copy this entire file to your Home Assistant configuration directory as:
+#   /config/stuck-phone-dashboard.yaml
+#
+# Then merge `dashboards/lovelace_yaml_fragment.yaml` into `configuration.yaml`
+# under `lovelace:` (see README → "Lovelace YAML mode").
+#
+# Replace REPLACE_WITH_CONFIG_ENTRY_ID using Developer tools → States →
+# sensor.stuck_onboarding_state → attribute config_entry_id.
+
+title: Stuck
+views:
+  - title: Stuck
+    path: stuck-phone
+    icon: mdi:nfc-variant
+    theme: default
+    cards:
+      - type: markdown
+        content: >
+          **Stuck** — scan an NFC tag for status, or use **Add object** to register
+          a new sticker or Home Assistant tag. You can delete this hint card anytime.
+      - type: custom:stuck-scan-status-card
+        title: Last NFC scan
+        config_entry_id: REPLACE_WITH_CONFIG_ENTRY_ID
+        tracked_objects_entity: sensor.stuck_tracked_objects
+      - type: custom:stuck-onboarding-card
+        title: Add object to Stuck
+        config_entry_id: REPLACE_WITH_CONFIG_ENTRY_ID
+        onboardingEntity: sensor.stuck_onboarding_state
+        tagInventoryEntity: sensor.stuck_available_ha_tags

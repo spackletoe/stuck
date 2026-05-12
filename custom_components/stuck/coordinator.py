@@ -498,6 +498,7 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Return dashboard-friendly onboarding state."""
         selected_tag = self.get_selected_existing_tag_details()
         return {
+            'config_entry_id': self._config_entry_id,
             'mode': self.onboarding.mode,
             'selected_tag_id': self.onboarding.selected_tag_id,
             'selected_tag_entity_id': self.onboarding.selected_tag_entity_id,

@@ -53,6 +53,8 @@ Right now it already includes:
 - storage-backed tracked objects and pending tags
 - services for creating, updating, deleting, dismissing, and resetting
 - sensors, binary sensors, and reset buttons
+- Lovelace cards for onboarding and last-tag scan status (served from `/stuck/www/…` after restart)
+- an example phone-oriented dashboard view in `dashboards/stuck_phone.yaml`, a YAML sidebar bundle in `dashboards/stuck_phone_dashboard.yaml` + `dashboards/lovelace_yaml_fragment.yaml`
 - a first dashboard concept
 - planning docs for the product, architecture, and implementation plan
 
@@ -104,6 +106,41 @@ These settings can be adjusted later through the integration options.
 
 ---
 
+## Phone-friendly Lovelace dashboard
+
+Stuck serves its Lovelace card scripts over HTTP so you do not have to copy files into `/config/www/` manually.
+
+1. **Restart Home Assistant** after installing or updating Stuck (so `async_setup` can register the static route).
+2. Under **Settings → Dashboards → ⋮ → Resources**, add two **JavaScript module** resources (paths are relative to your Home Assistant host):
+
+   - `/stuck/www/stuck-onboarding-card.js`
+   - `/stuck/www/stuck-scan-status-card.js`
+3. Find **`config_entry_id`**: **Developer tools → States** → open **`sensor.stuck_onboarding_state`** → copy the **`config_entry_id`** attribute (Stuck adds this for dashboard setup).
+4. Add a dashboard view using **`dashboards/stuck_phone.yaml`**: paste the `views:` block into your dashboard’s raw configuration, or create a new dashboard and merge that view. Replace **`REPLACE_WITH_CONFIG_ENTRY_ID`** with the value from step 3. (For a file-based sidebar dashboard instead, skip to **Lovelace YAML mode** below and use **`dashboards/stuck_phone_dashboard.yaml`**.)
+
+After that, open the **Stuck** tab on your phone: scanning a known tag should populate **Last NFC scan**, and **Add object to Stuck** runs the guided onboarding flow.
+
+### Lovelace YAML mode (optional)
+
+Use this if you want a **separate sidebar dashboard** defined as files under `/config/`, instead of pasting views in the UI.
+
+1. **Restart Home Assistant** with Stuck installed so `/stuck/www/…` is available.
+2. Copy the dashboard file into your config directory (adjust the left-hand path if your git clone lives elsewhere):
+
+   ```bash
+   cp dashboards/stuck_phone_dashboard.yaml /config/stuck-phone-dashboard.yaml
+   ```
+
+3. Edit **`/config/stuck-phone-dashboard.yaml`**: replace **`REPLACE_WITH_CONFIG_ENTRY_ID`** with the value from **Developer tools → States → `sensor.stuck_onboarding_state` → `config_entry_id`**.
+4. Merge **`dashboards/lovelace_yaml_fragment.yaml`** into **`configuration.yaml`**:
+   - If you **do not** already have a top-level **`lovelace:`** key, you can append the whole fragment file (it defines `lovelace:` once).
+   - If **`lovelace:`** already exists, open the fragment and merge only the pieces you need (see the comments at the top of that file). If you keep **`resource_mode: yaml`**, you must declare **every** custom Lovelace resource in YAML, not only Stuck’s two scripts.
+5. Reload **Lovelace configuration** under **Developer tools → YAML** (or restart Home Assistant).
+
+Home Assistant does **not** ship dashboard blueprints the way it does for automations; the fragment plus `stuck_phone_dashboard.yaml` is the portable equivalent.
+
+---
+
 ## Creating your first tracked object
 
 At the moment, the easiest way to create objects is through Home Assistant services.
@@ -132,7 +169,7 @@ If the call succeeds, Stuck should create entities for that object and make them
 
 ## Testing tag scan behavior
 
-Before the full polished mobile flow exists, the easiest way to test scan behavior is by firing Home Assistant events.
+The easiest way to exercise tag routing from a workstation is to fire Home Assistant events. When the phone dashboard from **`dashboards/stuck_phone.yaml`** is set up, you can also scan real tags and see **Last NFC scan** update live.
 
 Open **Developer Tools → Events** and fire:
 
