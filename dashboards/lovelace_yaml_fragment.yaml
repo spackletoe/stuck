@@ -22,6 +22,8 @@ lovelace:
       type: module
     - url: /stuck/www/stuck-scan-status-card.js
       type: module
+    - url: /stuck/www/stuck-summary-tiles-card.js
+      type: module
   dashboards:
     stuck-phone:
       mode: yaml

@@ -53,7 +53,7 @@ Right now it already includes:
 - storage-backed tracked objects and pending tags
 - services for creating, updating, deleting, dismissing, and resetting
 - sensors, binary sensors, and reset buttons
-- Lovelace cards for onboarding and last-tag scan status (served from `/stuck/www/…` after restart)
+- Lovelace cards for onboarding, last-tag scan status, and optional **summary tiles** (served from `/stuck/www/…` after restart)
 - an example phone-oriented dashboard view in `dashboards/stuck_phone.yaml`, a YAML sidebar bundle in `dashboards/stuck_phone_dashboard.yaml` + `dashboards/lovelace_yaml_fragment.yaml`
 - a first dashboard concept
 - planning docs for the product, architecture, and implementation plan
@@ -111,10 +111,11 @@ These settings can be adjusted later through the integration options.
 Stuck serves its Lovelace card scripts over HTTP so you do not have to copy files into `/config/www/` manually.
 
 1. **Restart Home Assistant** after installing or updating Stuck (so `async_setup` can register the static route).
-2. Under **Settings → Dashboards → ⋮ → Resources**, add two **JavaScript module** resources (paths are relative to your Home Assistant host):
+2. Under **Settings → Dashboards → ⋮ → Resources**, add **JavaScript module** resources (paths are relative to your Home Assistant host):
 
    - `/stuck/www/stuck-onboarding-card.js`
    - `/stuck/www/stuck-scan-status-card.js`
+   - `/stuck/www/stuck-summary-tiles-card.js` (optional; for the **Stuck Summary Tiles** card on a main dashboard)
 3. Find **`config_entry_id`**: **Developer tools → States** → open **`sensor.stuck_onboarding_state`** → copy the **`config_entry_id`** attribute (Stuck adds this for dashboard setup).
 4. Add a dashboard view using **`dashboards/stuck_phone.yaml`**: paste the `views:` block into your dashboard’s raw configuration, or create a new dashboard and merge that view. Replace **`REPLACE_WITH_CONFIG_ENTRY_ID`** with the value from step 3. (For a file-based sidebar dashboard instead, skip to **Lovelace YAML mode** below and use **`dashboards/stuck_phone_dashboard.yaml`**.)
 
@@ -310,7 +311,27 @@ The service can now resolve by `tag_id`, which is much easier than using interna
 
 A first dashboard can be built from the entities Stuck exposes.
 
-Right now the integration supports a dashboard with:
+### Summary counts without “history only” taps
+
+If you used **entity** or **tile** cards bound to `sensor.stuck_overdue_count` (and similar), the default tap target is still that sensor’s **more-info** / history. Two better options:
+
+1. **`custom:stuck-summary-tiles-card`** — one card with the same four metrics as a 2×2 grid. **Tap a tile** to expand a list of object names (with links to each `object_url`) or pending tag ids. Register `/stuck/www/stuck-summary-tiles-card.js` as a module, then add:
+
+   ```yaml
+   type: custom:stuck-summary-tiles-card
+   ```
+
+   Optional YAML overrides: `objectCountEntity`, `overdueCountEntity`, `dueSoonCountEntity`, `pendingCountEntity` (defaults match the usual `sensor.stuck_*` entity ids).
+
+2. **Built-in Markdown** — the count sensors now expose lists in attributes (after reload): `objects` on object / overdue / due soon counts, and `pending_tags` on the pending count. You can render them with a [Markdown card](https://www.home-assistant.io/dashboards/markdown/) and templates (no extra JS).
+
+The count sensors also expose row data for your own cards:
+
+- tracked object count — attribute **`objects`**: shown objects (respects “hide inactive”)
+- overdue / due soon counts — attribute **`objects`**: matching tracked objects (`due soon` includes **due now** as well; the numeric state matches)
+- pending tag count — attribute **`pending_tags`**: same rows as the pending inbox sensor
+
+Other building blocks:
 
 - tracked object count
 - overdue count

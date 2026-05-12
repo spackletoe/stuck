@@ -1,0 +1,10 @@
+# Add to a Lovelace view after registering:
+#   /stuck/www/stuck-summary-tiles-card.js  (JavaScript module)
+#
+# If your Stuck count entities were renamed, set the *_entity keys below.
+
+type: custom:stuck-summary-tiles-card
+# objectCountEntity: sensor.stuck_object_count
+# overdueCountEntity: sensor.stuck_overdue_count
+# dueSoonCountEntity: sensor.stuck_due_soon_count
+# pendingCountEntity: sensor.stuck_pending_tag_count

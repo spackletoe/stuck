@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -10,7 +11,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DATA_COORDINATOR, DOMAIN
+from .const import (
+    DATA_COORDINATOR,
+    DOMAIN,
+    STATUS_DUE_NOW,
+    STATUS_DUE_SOON,
+    STATUS_OVERDUE,
+)
 from .coordinator import StuckCoordinator
 from .models import TrackedObject
 
@@ -189,12 +196,13 @@ class StuckObjectCountSensor(StuckBaseEntity, SensorEntity):
         return len(self.coordinator.list_tracked_objects_for_ui())
 
     @property
-    def extra_state_attributes(self) -> dict[str, int]:
+    def extra_state_attributes(self) -> dict[str, Any]:
         total = len(self.coordinator.objects)
         shown = len(self.coordinator.list_tracked_objects_for_ui())
         return {
             "total_tracked_objects": total,
             "inactive_objects_hidden": max(0, total - shown),
+            "objects": self.coordinator.list_tracked_object_summaries_for_ui(),
         }
 
 
@@ -212,8 +220,14 @@ class StuckOverdueCountSensor(StuckBaseEntity, SensorEntity):
         return sum(
             1
             for obj in self.coordinator.objects.values()
-            if self.coordinator.get_object_status(obj) == "overdue"
+            if self.coordinator.get_object_status(obj) == STATUS_OVERDUE
         )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "objects": self.coordinator.list_object_summaries_by_statuses({STATUS_OVERDUE}),
+        }
 
 
 class StuckDueSoonCountSensor(StuckBaseEntity, SensorEntity):
@@ -230,8 +244,16 @@ class StuckDueSoonCountSensor(StuckBaseEntity, SensorEntity):
         return sum(
             1
             for obj in self.coordinator.objects.values()
-            if self.coordinator.get_object_status(obj) == "due_soon"
+            if self.coordinator.get_object_status(obj) in (STATUS_DUE_SOON, STATUS_DUE_NOW)
         )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "objects": self.coordinator.list_object_summaries_by_statuses(
+                {STATUS_DUE_SOON, STATUS_DUE_NOW}
+            ),
+        }
 
 
 class StuckPendingTagCountSensor(StuckBaseEntity, SensorEntity):
@@ -246,6 +268,10 @@ class StuckPendingTagCountSensor(StuckBaseEntity, SensorEntity):
     @property
     def native_value(self) -> int:
         return len(self.coordinator.pending_tags)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"pending_tags": self.coordinator.list_pending_tag_summaries()}
 
 
 class StuckLatestPendingTagSensor(StuckBaseEntity, SensorEntity):

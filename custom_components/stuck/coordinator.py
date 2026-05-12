@@ -632,6 +632,48 @@ class StuckCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return timedelta(0)
         return overdue
 
+    def _object_summary_dict(self, obj: TrackedObject) -> dict[str, Any]:
+        """Return a compact dict for dashboards (counts, lists, Lovelace)."""
+        status = self.get_object_status(obj)
+        return {
+            "object_id": obj.id,
+            "name": obj.name,
+            "tag_id": obj.tag_id,
+            "status": status,
+            "status_label": self._format_status_label(status),
+            "object_url": self.get_object_url(obj),
+        }
+
+    def list_tracked_object_summaries_for_ui(self) -> list[dict[str, Any]]:
+        """Summaries for objects shown in the UI (respects inactive visibility)."""
+        rows = [self._object_summary_dict(obj) for obj in self.list_tracked_objects_for_ui()]
+        return sorted(rows, key=lambda r: str(r.get("name") or "").lower())
+
+    def list_object_summaries_by_statuses(self, statuses: set[str]) -> list[dict[str, Any]]:
+        """Summaries for tracked objects whose derived status is in ``statuses``."""
+        rows = [
+            self._object_summary_dict(obj)
+            for obj in self.objects.values()
+            if self.get_object_status(obj) in statuses
+        ]
+        return sorted(rows, key=lambda r: str(r.get("name") or "").lower())
+
+    def list_pending_tag_summaries(self) -> list[dict[str, Any]]:
+        """Summaries for pending (unregistered) tags, newest first."""
+        items: list[dict[str, Any]] = []
+        for pending in self.get_pending_tags():
+            items.append(
+                {
+                    "tag_id": pending.tag_id,
+                    "tag_entity_id": pending.tag_entity_id,
+                    "first_seen_at": pending.first_seen_at,
+                    "last_seen_at": pending.last_seen_at,
+                    "scan_count": pending.scan_count,
+                    "source_device": pending.source_device,
+                }
+            )
+        return items
+
     def _snapshot(self) -> dict[str, Any]:
         """Return the current state snapshot."""
         return {
